@@ -23,16 +23,35 @@ import {
   TrendingUp,
   Globe,
   Sliders,
-  Award
+  Award,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 function App() {
   const { creator, error, login } = useApp();
   const [usernameInput, setUsernameInput] = useState('');
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   if (error && !creator) {
     return (
       <div className="login-container">
+        <button 
+          className="theme-toggle-btn" 
+          style={{ position: 'absolute', top: 20, right: 20 }}
+          onClick={toggleTheme}
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
         <div className="glass-card login-card" style={{ textAlign: 'center', borderColor: '#f43f5e' }}>
           <AlertTriangle size={48} color="#f43f5e" style={{ marginBottom: 15 }} />
           <h2 style={{ marginBottom: 10 }}>Connection Error</h2>
@@ -48,6 +67,13 @@ function App() {
   if (!creator) {
     return (
       <div className="login-container">
+        <button 
+          className="theme-toggle-btn" 
+          style={{ position: 'absolute', top: 20, right: 20 }}
+          onClick={toggleTheme}
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
         <div className="glass-card login-card">
           <div className="login-header">
             <div className="logo-icon">
@@ -85,11 +111,11 @@ function App() {
     );
   }
 
-  return <DashboardLayout />;
+  return <DashboardLayout theme={theme} toggleTheme={toggleTheme} />;
 }
 
 // --- MAIN DASHBOARD LAYOUT ---
-function DashboardLayout() {
+function DashboardLayout({ theme, toggleTheme }) {
   const { creator, activeTab, setActiveTab, logout, seedMockData } = useApp();
   const [simulatorOpen, setSimulatorOpen] = useState(false);
 
@@ -97,9 +123,14 @@ function DashboardLayout() {
     <div className="dashboard-wrapper">
       {/* Sidebar */}
       <aside className="sidebar">
-        <div className="sidebar-brand">
-          <ShieldAlert size={24} color="#6366f1" style={{ marginRight: 10 }} />
-          <span>InstaMod</span>
+        <div className="sidebar-brand flex-between" style={{ width: '100%' }}>
+          <div className="flex-row">
+            <ShieldAlert size={24} color="#6366f1" style={{ marginRight: 10 }} />
+            <span>InstaMod</span>
+          </div>
+          <button className="theme-toggle-btn" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         </div>
 
         <div className="creator-profile-badge">
