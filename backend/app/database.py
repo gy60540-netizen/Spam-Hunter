@@ -3,7 +3,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # SQLite Database URL
-DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
+import os
+if os.getenv("VERCEL") == "1":
+    DATABASE_URL = "sqlite:////tmp/instagram_spam_moderator.db"
+else:
+    DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
 
 # Create Database Engine
 engine = create_engine(
