@@ -13,6 +13,10 @@ class Creator(Base):
     lead_keywords = Column(Text, default="price,buy,link,dm,how much,cost,details,purchase,collaborate,want,need,interested,me,info,kitne ka hai,kahan,online,review,code,genuine")
     lead_dm_templates = Column(Text, default="[]") # JSON list of strings
     is_mock = Column(Boolean, default=True)
+    subscription_status = Column(String, default="inactive")
+    subscription_ends_at = Column(DateTime, nullable=True)
+    stripe_customer_id = Column(String, nullable=True)
+    stripe_subscription_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     posts = relationship("MediaPost", back_populates="creator", cascade="all, delete-orphan")

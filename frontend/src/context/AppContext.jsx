@@ -23,13 +23,26 @@ export const AppProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Auto-login from localStorage on mount
+  // Auto-login from localStorage on mount and sync with API
   useEffect(() => {
     const savedCreator = localStorage.getItem('instagram_creator');
     if (savedCreator) {
       try {
         const parsed = JSON.parse(savedCreator);
         setCreator(parsed);
+        // Sync fresh profile details (e.g. subscription status)
+        fetch(`${API_BASE_URL}/creators/${parsed.id}`)
+          .then(res => {
+            if (res.ok) return res.json();
+            throw new Error();
+          })
+          .then(data => {
+            setCreator(data);
+            localStorage.setItem('instagram_creator', JSON.stringify(data));
+          })
+          .catch(() => {
+            // Fallback: keep localStorage version if backend is offline
+          });
       } catch (e) {
         localStorage.removeItem('instagram_creator');
       }

@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 function App() {
-  const { creator, error, login } = useApp();
+  const { creator, error, login, logout } = useApp();
   const [usernameInput, setUsernameInput] = useState('');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
 
@@ -37,6 +37,34 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Handle Stripe & Mock checkout redirects
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mockCheckout = params.get('mock_checkout');
+    const checkoutSuccess = params.get('checkout_success');
+    const creatorId = params.get('creator_id');
+
+    if (mockCheckout && creatorId) {
+      // Simulate webhook on mock-activate to unlock subscription
+      fetch(`http://127.0.0.1:8000/api/payments/mock-activate?creator_id=${creatorId}`, {
+        method: 'POST'
+      })
+      .then(res => {
+        if (res.ok) return res.json();
+      })
+      .then(data => {
+        if (data) {
+          localStorage.setItem('instagram_creator', JSON.stringify(data));
+          window.location.href = '/'; // Refresh to dashboard
+        }
+      });
+    }
+
+    if (checkoutSuccess) {
+      window.location.href = '/';
+    }
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -109,6 +137,10 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  if (creator.subscription_status !== "active") {
+    return <PaywallScreen creator={creator} logout={logout} theme={theme} toggleTheme={toggleTheme} />;
   }
 
   return <DashboardLayout theme={theme} toggleTheme={toggleTheme} />;
@@ -1179,6 +1211,92 @@ function SimulatorPanel({ onClose }) {
             <span>🤬 Hate / Toxic User</span>
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PaywallScreen({ creator, logout, theme, toggleTheme }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubscribe = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/payments/create-checkout-session?creator_id=${creator.id}`, {
+        method: 'POST'
+      });
+      if (!res.ok) throw new Error('Failed to create payment checkout session.');
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="login-container">
+      <button 
+        className="theme-toggle-btn" 
+        style={{ position: 'absolute', top: 20, right: 20 }}
+        onClick={toggleTheme}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
+      <div className="glass-card login-card" style={{ maxWidth: '480px', textAlign: 'center' }}>
+        <div style={{ marginBottom: 20 }}>
+          <Sparkles size={48} color="var(--color-primary)" style={{ margin: '0 auto 15px auto' }} />
+          <h1 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: 8 }}>InstaMod Premium</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Get access to automated comments moderation, AI spam classification, and instant DMs.
+          </p>
+        </div>
+
+        {error && (
+          <div style={{ background: 'rgba(244, 63, 94, 0.1)', color: 'var(--color-hate)', padding: 10, borderRadius: 8, fontSize: '0.85rem', marginBottom: 15 }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{
+          background: 'var(--bg-timeline)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: '12px',
+          padding: '20px',
+          marginBottom: '25px',
+          textAlign: 'left'
+        }}>
+          <div className="flex-between" style={{ marginBottom: '15px', borderBottom: '1px solid var(--border-glass)', paddingBottom: '10px' }}>
+            <span style={{ fontWeight: 600 }}>Standard SaaS Plan</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-primary)' }}>$19.00 / mo</span>
+          </div>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)', paddingLeft: 0, margin: 0 }}>
+            <li>✓ Unlimited comments monitoring</li>
+            <li>✓ Auto-reply rotated templates</li>
+            <li>✓ Smart lead capture detection</li>
+            <li>✓ Anti-spam & Toxic keyword filter</li>
+            <li>✓ 24/7 background queue worker</li>
+          </ul>
+        </div>
+
+        <button 
+          onClick={handleSubscribe} 
+          className="btn-primary" 
+          style={{ width: '100%', justifyContent: 'center', marginBottom: 15, padding: '12px' }}
+          disabled={submitting}
+        >
+          {submitting ? 'Connecting...' : 'Subscribe & Unlock Now'} <Sparkles size={16} />
+        </button>
+
+        <button onClick={logout} className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }}>
+          <LogOut size={16} /> Log Out
+        </button>
       </div>
     </div>
   );

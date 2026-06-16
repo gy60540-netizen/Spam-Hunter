@@ -2,11 +2,19 @@ import json
 import asyncio
 import datetime
 import random
+import os
+import stripe
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
+
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_51MockKey")
+stripe.api_key = STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 
 from .database import engine, Base, get_db
 from .models import Creator, MediaPost, Commenter, Comment, DMQueueItem, Like
@@ -152,8 +160,16 @@ def toggle_creator_mode(creator_id: int, payload: CreatorToggleMode, db: Session
     db.refresh(creator)
     return creator
 
+def check_subscription(creator_id: int, db: Session):
+    creator = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+    if creator.subscription_status != "active":
+        raise HTTPException(status_code=402, detail="Active subscription required")
+
 @app.get("/api/posts/{creator_id}", response_model=List[MediaPostResponse])
 def get_posts(creator_id: int, db: Session = Depends(get_db)):
+    check_subscription(creator_id, db)
     return db.query(MediaPost).filter(MediaPost.creator_id == creator_id).all()
 
 @app.get("/api/posts/{media_id}/comments", response_model=List[CommentResponse])
@@ -166,6 +182,7 @@ def get_post_comments(media_id: str, db: Session = Depends(get_db)):
 @app.get("/api/analytics/{creator_id}", response_model=DashboardStats)
 def get_dashboard_analytics(creator_id: int, db: Session = Depends(get_db)):
     """Computes all dashboard overview statistics."""
+    check_subscription(creator_id, db)
     post_ids = [p.id for p in db.query(MediaPost).filter(MediaPost.creator_id == creator_id).all()]
     total_comments = db.query(Comment).filter(Comment.media_id.in_(post_ids)).count()
     total_users = db.query(Commenter).filter(Commenter.creator_id == creator_id).count()
@@ -217,6 +234,7 @@ def get_dashboard_analytics(creator_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/commenters/{creator_id}", response_model=List[CommenterResponse])
 def get_commenters(creator_id: int, db: Session = Depends(get_db)):
+    check_subscription(creator_id, db)
     return db.query(Commenter).filter(Commenter.creator_id == creator_id).order_by(Commenter.risk_score.desc()).all()
 
 @app.get("/api/commenter/{username}/history", response_model=List[CommentResponse])
@@ -227,6 +245,7 @@ def get_commenter_history(username: str, db: Session = Depends(get_db)):
 
 @app.get("/api/queue/{creator_id}", response_model=List[DMQueueItemResponse])
 def get_dm_queue(creator_id: int, db: Session = Depends(get_db)):
+    check_subscription(creator_id, db)
     return db.query(DMQueueItem).filter(
         DMQueueItem.creator_id == creator_id
     ).order_by(DMQueueItem.scheduled_for.desc()).all()
@@ -235,6 +254,7 @@ def get_dm_queue(creator_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/loyalty/{creator_id}", response_model=List[LoyalFanResponse])
 def get_loyal_fans(creator_id: int, db: Session = Depends(get_db)):
+    check_subscription(creator_id, db)
     """
     Identifies and segments loyal fans based on the percentage of posts they commented on
     within a sliding 2-month (60 days) window.
@@ -315,6 +335,107 @@ def get_loyal_fans(creator_id: int, db: Session = Depends(get_db)):
     return result
 
 
+# --- PAYMENT & SUBSCRIPTION ROUTES ---
+
+@app.post("/api/payments/create-checkout-session")
+def create_checkout_session(creator_id: int, db: Session = Depends(get_db)):
+    """Creates a Stripe checkout session for a creator."""
+    creator = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+        
+    # If using mock key or not set, return a mock checkout URL for easy testing
+    if STRIPE_SECRET_KEY == "sk_test_51MockKey":
+        return {"url": f"{FRONTEND_URL}?mock_checkout=true&creator_id={creator_id}"}
+        
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {
+                            "name": "InstaMod Premium Subscription",
+                            "description": "Instagram Comment Moderation & Auto-DM service",
+                        },
+                        "unit_amount": 1900,  # $19.00
+                        "recurring": {"interval": "month"},
+                    },
+                    "quantity": 1,
+                }
+            ],
+            mode="subscription",
+            success_url=f"{FRONTEND_URL}?checkout_success=true&session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{FRONTEND_URL}?checkout_cancel=true",
+            client_reference_id=str(creator_id),
+            customer_email=f"{creator.instagram_username}@mockmail.com" if not creator.stripe_customer_id else None,
+            customer=creator.stripe_customer_id if creator.stripe_customer_id else None,
+        )
+        return {"url": checkout_session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/payments/webhook")
+async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+    """Handles Stripe Webhook events."""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+    
+    event = None
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+        
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        creator_id = session.get("client_reference_id")
+        subscription_id = session.get("subscription")
+        customer_id = session.get("customer")
+        
+        if creator_id:
+            creator = db.query(Creator).filter(Creator.id == int(creator_id)).first()
+            if creator:
+                creator.subscription_status = "active"
+                creator.stripe_subscription_id = subscription_id
+                creator.stripe_customer_id = customer_id
+                creator.subscription_ends_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
+                db.commit()
+                
+    elif event["type"] in ["customer.subscription.updated", "customer.subscription.deleted"]:
+        subscription = event["data"]["object"]
+        sub_id = subscription.get("id")
+        status = subscription.get("status")
+        
+        creator = db.query(Creator).filter(Creator.stripe_subscription_id == sub_id).first()
+        if creator:
+            if status in ["active", "trialing"]:
+                creator.subscription_status = "active"
+            else:
+                creator.subscription_status = "inactive"
+            db.commit()
+            
+    return {"status": "success"}
+
+@app.post("/api/payments/mock-activate")
+def mock_activate_subscription(creator_id: int, db: Session = Depends(get_db)):
+    """For testing without Stripe, instantly activates a creator's subscription."""
+    creator = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+        
+    creator.subscription_status = "active"
+    creator.subscription_ends_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
+    db.commit()
+    db.refresh(creator)
+    return creator
+
+
 # --- SIMULATOR & SEEDING ---
 
 @app.post("/api/simulator/comment", response_model=CommentResponse)
@@ -327,6 +448,9 @@ def simulate_new_comment(payload: CommentCreateMock, db: Session = Depends(get_d
     creator = db.query(Creator).filter(Creator.id == post.creator_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
+        
+    if creator.subscription_status != "active":
+        raise HTTPException(status_code=402, detail="Active subscription required")
 
     username = payload.username.strip().replace("@", "")
     if not username:

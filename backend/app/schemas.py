@@ -15,6 +15,8 @@ class CreatorResponse(CreatorBase):
     dm_templates: str
     lead_keywords: str
     lead_dm_templates: str
+    subscription_status: str
+    subscription_ends_at: Optional[datetime]
     created_at: datetime
 
     class Config:
