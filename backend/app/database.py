@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 
 # SQLite Database URL
 import os
-if os.getenv("VERCEL") == "1":
+if "/var/task" in os.path.abspath(__file__) or os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None:
     DATABASE_URL = "sqlite:////tmp/instagram_spam_moderator.db"
 else:
     DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
