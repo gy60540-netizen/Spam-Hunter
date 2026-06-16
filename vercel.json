@@ -1,11 +1,12 @@
 {
-  "cleanUrls": true,
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+  "experimentalServices": {
+    "frontend": {
+      "root": "frontend",
+      "routePrefix": "/"
+    },
+    "backend": {
+      "root": "backend",
+      "routePrefix": "/_/backend"
     }
-  ]
+  }
 }
