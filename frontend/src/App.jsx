@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from './context/AppContext';
+import { useApp, API_BASE_URL } from './context/AppContext';
+
 import { 
   ShieldAlert, 
   Users, 
@@ -47,7 +48,8 @@ function App() {
 
     if (mockCheckout && creatorId) {
       // Simulate webhook on mock-activate to unlock subscription
-      fetch(`http://127.0.0.1:8000/api/payments/mock-activate?creator_id=${creatorId}`, {
+      fetch(`${API_BASE_URL}/payments/mock-activate?creator_id=${creatorId}`, {
+
         method: 'POST'
       })
       .then(res => {
@@ -601,7 +603,8 @@ function CommentersTab() {
     setSelectedUser(username);
     setHistoryLoading(true);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/commenter/${username}/history`);
+      const res = await fetch(`${API_BASE_URL}/commenter/${username}/history`);
+
       const data = await res.json();
       setUserHistory(data);
     } catch (e) {
@@ -1224,7 +1227,8 @@ function PaywallScreen({ creator, logout, theme, toggleTheme }) {
     setSubmitting(true);
     setError('');
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/payments/create-checkout-session?creator_id=${creator.id}`, {
+      const res = await fetch(`${API_BASE_URL}/payments/create-checkout-session?creator_id=${creator.id}`, {
+
         method: 'POST'
       });
       if (!res.ok) throw new Error('Failed to create payment checkout session.');
