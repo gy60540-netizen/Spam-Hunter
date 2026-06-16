@@ -4,6 +4,7 @@ import datetime
 import random
 import os
 import stripe
+import razorpay
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,20 @@ from typing import List
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_51MockKey")
 stripe.api_key = STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mockKey")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+
+razorpay_client = None
+if RAZORPAY_KEY_ID != "rzp_test_mockKey":
+    try:
+        razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    except Exception as e:
+        print(f"[Razorpay Init Error] {str(e)}")
+
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
 
 
 from .database import engine, Base, get_db
@@ -29,6 +43,41 @@ from .queue_worker import run_dm_queue_worker, enqueue_dm
 
 # Initialize DB Tables on startup
 Base.metadata.create_all(bind=engine)
+
+def migrate_database():
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("SELECT razorpay_customer_id FROM creators LIMIT 1"))
+            has_customer_id = True
+        except Exception:
+            has_customer_id = False
+
+        try:
+            conn.execute(text("SELECT razorpay_subscription_id FROM creators LIMIT 1"))
+            has_subscription_id = True
+        except Exception:
+            has_subscription_id = False
+
+    if not has_customer_id or not has_subscription_id:
+        with engine.begin() as conn:
+            if not has_customer_id:
+                try:
+                    conn.execute(text("ALTER TABLE creators ADD COLUMN razorpay_customer_id TEXT"))
+                    print("[Migration] Added column razorpay_customer_id to creators table")
+                except Exception as e:
+                    print(f"[Migration Error razorpay_customer_id] {str(e)}")
+            if not has_subscription_id:
+                try:
+                    conn.execute(text("ALTER TABLE creators ADD COLUMN razorpay_subscription_id TEXT"))
+                    print("[Migration] Added column razorpay_subscription_id to creators table")
+                except Exception as e:
+                    print(f"[Migration Error razorpay_subscription_id] {str(e)}")
+
+# Run database migrations
+migrate_database()
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -339,92 +388,126 @@ def get_loyal_fans(creator_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/payments/create-checkout-session")
 def create_checkout_session(creator_id: int, db: Session = Depends(get_db)):
-    """Creates a Stripe checkout session for a creator."""
+    """Creates a Razorpay subscription or returns mock checkout for a creator."""
     creator = db.query(Creator).filter(Creator.id == creator_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
         
-    # If using mock key or not set, return a mock checkout URL for easy testing
-    if STRIPE_SECRET_KEY == "sk_test_51MockKey":
+    # If using mock key, return a mock checkout URL for easy testing
+    if RAZORPAY_KEY_ID == "rzp_test_mockKey":
         return {"url": f"{FRONTEND_URL}?mock_checkout=true&creator_id={creator_id}"}
         
+    if not razorpay_client:
+        raise HTTPException(status_code=500, detail="Razorpay client not configured properly")
+        
     try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "usd",
-                        "product_data": {
-                            "name": "InstaMod Premium Subscription",
-                            "description": "Instagram Comment Moderation & Auto-DM service",
-                        },
-                        "unit_amount": 1900,  # $19.00
-                        "recurring": {"interval": "month"},
-                    },
-                    "quantity": 1,
+        # Find or create a monthly subscription plan
+        plan_id = None
+        try:
+            plans = razorpay_client.plan.all()
+            for p in plans.get("items", []):
+                if p.get("item", {}).get("name") == "InstaMod Premium":
+                    plan_id = p.get("id")
+                    break
+        except Exception as e:
+            print(f"[Razorpay Plan Fetch Warning] {str(e)}")
+            
+        if not plan_id:
+            try:
+                plan_payload = {
+                    "period": "monthly",
+                    "interval": 1,
+                    "item": {
+                        "name": "InstaMod Premium",
+                        "amount": 149900,  # ₹1499.00 in paise
+                        "currency": "INR",
+                        "description": "Instagram Comment Moderation & Auto-DM service"
+                    }
                 }
-            ],
-            mode="subscription",
-            success_url=f"{FRONTEND_URL}?checkout_success=true&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{FRONTEND_URL}?checkout_cancel=true",
-            client_reference_id=str(creator_id),
-            customer_email=f"{creator.instagram_username}@mockmail.com" if not creator.stripe_customer_id else None,
-            customer=creator.stripe_customer_id if creator.stripe_customer_id else None,
-        )
-        return {"url": checkout_session.url}
+                plan = razorpay_client.plan.create(plan_payload)
+                plan_id = plan["id"]
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to create Razorpay plan: {str(e)}")
+                
+        # Create subscription
+        sub_payload = {
+            "plan_id": plan_id,
+            "customer_notify": 1,
+            "total_count": 120, # 10 years duration
+            "notes": {
+                "creator_id": str(creator_id)
+            }
+        }
+        subscription = razorpay_client.subscription.create(sub_payload)
+        
+        # Save subscription details to Creator DB
+        creator.razorpay_subscription_id = subscription["id"]
+        db.commit()
+        
+        return {
+            "subscription_id": subscription["id"],
+            "razorpay_key_id": RAZORPAY_KEY_ID
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/payments/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    """Handles Stripe Webhook events."""
+async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    """Handles Razorpay Webhook events."""
     payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
+    sig_header = request.headers.get("x-razorpay-signature")
     
-    event = None
+    if RAZORPAY_KEY_ID == "rzp_test_mockKey":
+        return {"status": "mock_ignored"}
+        
+    if not sig_header:
+        raise HTTPException(status_code=400, detail="Missing signature header")
+        
+    # Verify webhook signature
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        razorpay_client.utility.verify_webhook_signature(
+            payload.decode("utf-8"),
+            sig_header,
+            RAZORPAY_WEBHOOK_SECRET
         )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError as e:
-        raise HTTPException(status_code=400, detail="Invalid signature")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Signature verification failed: {str(e)}")
         
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        creator_id = session.get("client_reference_id")
-        subscription_id = session.get("subscription")
-        customer_id = session.get("customer")
+    try:
+        event_data = json.loads(payload.decode("utf-8"))
+        event_type = event_data.get("event")
         
-        if creator_id:
-            creator = db.query(Creator).filter(Creator.id == int(creator_id)).first()
+        if event_type in ["subscription.activated", "subscription.charged"]:
+            payload_sub = event_data.get("payload", {}).get("subscription", {}).get("entity", {})
+            sub_id = payload_sub.get("id")
+            customer_id = payload_sub.get("customer_id")
+            
+            # Find the creator with this subscription ID
+            creator = db.query(Creator).filter(Creator.razorpay_subscription_id == sub_id).first()
             if creator:
                 creator.subscription_status = "active"
-                creator.stripe_subscription_id = subscription_id
-                creator.stripe_customer_id = customer_id
+                creator.razorpay_customer_id = customer_id
                 creator.subscription_ends_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
                 db.commit()
+                print(f"[Razorpay Webhook] Activated subscription for creator {creator.instagram_username}")
                 
-    elif event["type"] in ["customer.subscription.updated", "customer.subscription.deleted"]:
-        subscription = event["data"]["object"]
-        sub_id = subscription.get("id")
-        status = subscription.get("status")
-        
-        creator = db.query(Creator).filter(Creator.stripe_subscription_id == sub_id).first()
-        if creator:
-            if status in ["active", "trialing"]:
-                creator.subscription_status = "active"
-            else:
-                creator.subscription_status = "inactive"
-            db.commit()
+        elif event_type in ["subscription.cancelled", "subscription.halted"]:
+            payload_sub = event_data.get("payload", {}).get("subscription", {}).get("entity", {})
+            sub_id = payload_sub.get("id")
             
-    return {"status": "success"}
+            creator = db.query(Creator).filter(Creator.razorpay_subscription_id == sub_id).first()
+            if creator:
+                creator.subscription_status = "inactive"
+                db.commit()
+                print(f"[Razorpay Webhook] Suspended subscription for creator {creator.instagram_username}")
+                
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/payments/mock-activate")
 def mock_activate_subscription(creator_id: int, db: Session = Depends(get_db)):
-    """For testing without Stripe, instantly activates a creator's subscription."""
+    """For testing without payments, instantly activates a creator's subscription."""
     creator = db.query(Creator).filter(Creator.id == creator_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
@@ -434,6 +517,7 @@ def mock_activate_subscription(creator_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(creator)
     return creator
+
 
 
 # --- SIMULATOR & SEEDING ---

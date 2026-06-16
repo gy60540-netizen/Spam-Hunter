@@ -1228,13 +1228,41 @@ function PaywallScreen({ creator, logout, theme, toggleTheme }) {
     setError('');
     try {
       const res = await fetch(`${API_BASE_URL}/payments/create-checkout-session?creator_id=${creator.id}`, {
-
         method: 'POST'
       });
       if (!res.ok) throw new Error('Failed to create payment checkout session.');
       const data = await res.json();
+      
       if (data.url) {
+        // Mock checkout redirect
         window.location.href = data.url;
+        return;
+      }
+      
+      if (data.subscription_id && data.razorpay_key_id) {
+        const options = {
+          key: data.razorpay_key_id,
+          subscription_id: data.subscription_id,
+          name: "InstaMod Premium",
+          description: "Instagram Comment Moderation & Auto-DM service",
+          handler: async function (response) {
+            setSubmitting(true);
+            // Wait 2.5 seconds for Razorpay webhook to process
+            await new Promise(resolve => setTimeout(resolve, 2500));
+            window.location.href = `/?checkout_success=true&creator_id=${creator.id}`;
+          },
+          prefill: {
+            name: creator.instagram_username,
+            email: `${creator.instagram_username}@example.com`
+          },
+          theme: {
+            color: "#3F8CFF"
+          }
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        throw new Error('Invalid response from server.');
       }
     } catch (err) {
       setError(err.message);
@@ -1242,6 +1270,7 @@ function PaywallScreen({ creator, logout, theme, toggleTheme }) {
       setSubmitting(false);
     }
   };
+
 
   return (
     <div className="login-container">
