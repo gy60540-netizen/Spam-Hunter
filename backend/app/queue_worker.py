@@ -167,3 +167,74 @@ async def run_dm_queue_worker():
         
         # Check database every 3 seconds
         await asyncio.sleep(3)
+
+
+async def process_creator_pending_dms(creator_id: int):
+    """
+    Processes all pending DMs for a specific creator by waiting for their scheduled time.
+    Perfect for serverless (Vercel) environments.
+    """
+    db = SessionLocal()
+    try:
+        # Fetch all pending items
+        pending_items = db.query(DMQueueItem).filter(
+            DMQueueItem.creator_id == creator_id,
+            DMQueueItem.status == "PENDING"
+        ).order_by(DMQueueItem.scheduled_for.asc()).all()
+
+        for item in pending_items:
+            # Re-fetch creator to get latest tokens
+            creator = db.query(Creator).filter(Creator.id == item.creator_id).first()
+            if not creator:
+                item.status = "FAILED"
+                item.error_message = "Creator not found"
+                db.commit()
+                continue
+
+            # Check if we need to wait for the scheduled time
+            now = datetime.datetime.utcnow()
+            time_to_wait = (item.scheduled_for - now).total_seconds()
+            if time_to_wait > 0:
+                print(f"[Serverless Worker] Waiting {time_to_wait:.2f}s for DM to @{item.recipient_username}...")
+                await asyncio.sleep(min(time_to_wait, 6.0)) # cap at 6 seconds to avoid Serverless timeout
+
+            print(f"[Worker] Processing DM to @{item.recipient_username}: '{item.message_text[:30]}...'")
+
+            if creator.is_mock:
+                item.status = "SENT"
+                item.sent_at = datetime.datetime.utcnow()
+                print(f"[Worker] DM sent to @{item.recipient_username} successfully (MOCK).")
+            else:
+                if not creator.access_token:
+                    item.status = "FAILED"
+                    item.error_message = "No Page Access Token found"
+                    print(f"[Worker] DM to @{item.recipient_username} failed: No Page Access Token found")
+                else:
+                    if not creator.ig_user_id:
+                        item.status = "FAILED"
+                        item.error_message = "No Instagram User ID found"
+                        print(f"[Worker] DM to @{item.recipient_username} failed: No Instagram User ID found")
+                    else:
+                        url = f"https://graph.facebook.com/v17.0/{creator.ig_user_id}/messages?access_token={creator.access_token}"
+                        payload = {
+                            "recipient": {
+                                "comment_id": item.comment_id
+                            },
+                            "message": {
+                                "text": item.message_text
+                            }
+                        }
+                        res = requests.post(url, json=payload)
+                        if res.status_code == 200:
+                            item.status = "SENT"
+                            item.sent_at = datetime.datetime.utcnow()
+                            print(f"[Worker] DM sent to @{item.recipient_username} successfully.")
+                        else:
+                            item.status = "FAILED"
+                            item.error_message = res.text
+                            print(f"[Worker] DM to @{item.recipient_username} failed: {res.text}")
+            db.commit()
+    except Exception as e:
+        print(f"[Serverless Worker Error] {str(e)}")
+    finally:
+        db.close()

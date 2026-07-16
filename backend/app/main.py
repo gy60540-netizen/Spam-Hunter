@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Request, Query
+from fastapi import FastAPI, Depends, HTTPException, Request, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
@@ -28,7 +28,7 @@ from .schemas import (
     LoyalFanResponse, LikeCreateMock, LikeResponse, FacebookCallbackRequest
 )
 from .classification import classify_comment, update_commenter_stats
-from .queue_worker import run_dm_queue_worker, enqueue_dm
+from .queue_worker import run_dm_queue_worker, enqueue_dm, process_creator_pending_dms
 
 # Initialize DB Tables on startup
 Base.metadata.create_all(bind=engine)
@@ -534,7 +534,7 @@ def get_loyal_fans(creator_id: int, db: Session = Depends(get_db)):
 # --- SIMULATOR & SEEDING ---
 
 @app.post("/api/simulator/comment", response_model=CommentResponse)
-def simulate_new_comment(payload: CommentCreateMock, db: Session = Depends(get_db)):
+def simulate_new_comment(payload: CommentCreateMock, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Simulates receiving a new comment on a creator's post."""
     post = db.query(MediaPost).filter(MediaPost.id == payload.media_id).first()
     if not post:
@@ -591,6 +591,7 @@ def simulate_new_comment(payload: CommentCreateMock, db: Session = Depends(get_d
     # Auto-DM logic for all comments except Hate Comments and toxic commenters (risk_score > 30)
     if category != "Hate Comment" and commenter.risk_score <= 30:
         enqueue_dm(db, post.creator_id, username, comment_id)
+        background_tasks.add_task(process_creator_pending_dms, post.creator_id)
 
     return new_comment
 
@@ -756,7 +757,7 @@ def verify_webhook(
     raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/api/webhooks/instagram")
-async def handle_webhook(request: Request, db: Session = Depends(get_db)):
+async def handle_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Handles incoming live comments/messages from Instagram."""
     payload = await request.json()
     
@@ -798,9 +799,8 @@ async def handle_webhook(request: Request, db: Session = Depends(get_db)):
                         db.refresh(commenter)
                     update_commenter_stats(db, commenter)
                     
-                    if category == "Lead":
-                        enqueue_dm(db, creator.id, from_user, comment_id, is_lead=True)
-                    elif category == "Normal":
-                        enqueue_dm(db, creator.id, from_user, comment_id, is_lead=False)
+                    if category == "Lead" or category == "Normal":
+                        enqueue_dm(db, creator.id, from_user, comment_id)
+                        background_tasks.add_task(process_creator_pending_dms, creator.id)
 
     return {"status": "ok"}
