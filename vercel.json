@@ -1,8 +1,7 @@
 {
   "services": {
     "frontend": {
-      "entrypoint": "frontend",
-      "routePrefix": "/"
+      "entrypoint": "frontend"
     },
     "backend": {
       "entrypoint": "backend/index.py",
