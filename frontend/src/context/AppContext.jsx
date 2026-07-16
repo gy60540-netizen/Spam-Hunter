@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 
 const AppContext = createContext();
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 
 export const AppProvider = ({ children }) => {
@@ -23,9 +23,20 @@ export const AppProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, commenters, queue, templates
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [metaConfig, setMetaConfig] = useState(null);
 
   // Auto-login from localStorage on mount and sync with API
   useEffect(() => {
+    // Fetch Meta configuration
+    fetch(`${API_BASE_URL}/auth/config`)
+      .then(res => {
+        if (res.ok) return res.json();
+      })
+      .then(data => {
+        if (data) setMetaConfig(data);
+      })
+      .catch(err => console.error("Failed to fetch meta config:", err));
+
     const savedCreator = localStorage.getItem('instagram_creator');
     if (savedCreator) {
       try {
@@ -137,6 +148,32 @@ export const AppProvider = ({ children }) => {
       return true;
     } catch (err) {
       setError('Server connection error. Please start backend first.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithFacebookCode = async (code) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/facebook-callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Facebook login failed');
+      }
+      const data = await res.json();
+      setCreator(data);
+      localStorage.setItem('instagram_creator', JSON.stringify(data));
+      setError('');
+      return true;
+    } catch (err) {
+      console.error("Facebook Login Error:", err);
+      setError(`Login Failed: ${err.message}`);
       return false;
     } finally {
       setLoading(false);
@@ -280,7 +317,9 @@ export const AppProvider = ({ children }) => {
       setActiveTab,
       loading,
       error,
+      metaConfig,
       login,
+      loginWithFacebookCode,
       logout,
       updateTemplates,
       updateLeadTemplates,

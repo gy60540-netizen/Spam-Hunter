@@ -3,40 +3,29 @@ import asyncio
 import datetime
 import random
 import os
-import stripe
-import razorpay
+from dotenv import load_dotenv
+load_dotenv()
+
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "sk_test_51MockKey")
-stripe.api_key = STRIPE_SECRET_KEY
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_mockKey")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
-
-razorpay_client = None
-if RAZORPAY_KEY_ID != "rzp_test_mockKey":
-    try:
-        razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-    except Exception as e:
-        print(f"[Razorpay Init Error] {str(e)}")
-
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FB_APP_ID = os.getenv("FB_APP_ID", "")
+FB_APP_SECRET = os.getenv("FB_APP_SECRET", "")
 
 
 
+import requests
 from .database import engine, Base, get_db
 from .models import Creator, MediaPost, Commenter, Comment, DMQueueItem, Like
 from .schemas import (
     CreatorResponse, CreatorUpdateTemplates, CreatorUpdateLeadKeywords,
     CreatorToggleMode, MediaPostResponse, CommenterResponse, CommentResponse,
     CommentCreateMock, DMQueueItemResponse, DashboardStats, TopSpammer, TopHater,
-    LoyalFanResponse, LikeCreateMock, LikeResponse
+    LoyalFanResponse, LikeCreateMock, LikeResponse, FacebookCallbackRequest
 )
 from .classification import classify_comment, update_commenter_stats
 from .queue_worker import run_dm_queue_worker, enqueue_dm
@@ -74,6 +63,27 @@ def migrate_database():
                 except Exception as e:
                     print(f"[Migration Error razorpay_subscription_id] {str(e)}")
 
+    # Add Meta fields if they don't exist (running outside the razorpay if-block)
+    meta_fields = ["fb_page_id", "fb_page_access_token", "ig_user_id", "long_lived_token"]
+    with engine.begin() as conn:
+        for field in meta_fields:
+            try:
+                conn.execute(text(f"SELECT {field} FROM creators LIMIT 1"))
+            except Exception:
+                try:
+                    conn.execute(text(f"ALTER TABLE creators ADD COLUMN {field} TEXT"))
+                    print(f"[Migration] Added column {field} to creators table")
+                except Exception as e:
+                    print(f"[Migration Error {field}] {str(e)}")
+
+    # Force activate all existing creators
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE creators SET subscription_status = 'active'"))
+            print("[Migration] Force activated all creators to 'active'")
+    except Exception as e:
+        print(f"[Migration Error Activate] {str(e)}")
+
 # Run database migrations
 migrate_database()
 
@@ -108,6 +118,140 @@ app.add_middleware(
 
 
 # --- AUTH ROUTES ---
+
+@app.get("/api/auth/config")
+def get_auth_config():
+    return {"app_id": FB_APP_ID}
+
+@app.post("/api/auth/facebook-callback", response_model=CreatorResponse)
+def facebook_callback(payload: FacebookCallbackRequest, db: Session = Depends(get_db)):
+    import traceback
+    print("=== FACEBOOK CALLBACK START ===")
+    print(f"Payload Code: {payload.code}")
+    print(f"Payload Redirect URI: {payload.redirect_uri}")
+    
+    if not FB_APP_ID or not FB_APP_SECRET:
+        print("Error: FB_APP_ID or FB_APP_SECRET not configured in environment.")
+        raise HTTPException(status_code=500, detail="Meta credentials not configured.")
+        
+    redirect_uri = payload.redirect_uri or f"{FRONTEND_URL}/"
+    print(f"Using Redirect URI: {redirect_uri}")
+
+    try:
+        # 1. Exchange code for short-lived User Access Token
+        token_url = f"https://graph.facebook.com/v17.0/oauth/access_token?client_id={FB_APP_ID}&redirect_uri={redirect_uri}&client_secret={FB_APP_SECRET}&code={payload.code}"
+        print(f"Requesting token from: {token_url}")
+        res = requests.get(token_url)
+        print(f"Token response status: {res.status_code}")
+        print(f"Token response body: {res.text}")
+        
+        if res.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Failed to get user access token: {res.text}")
+        
+        token_data = res.json()
+        user_access_token = token_data.get("access_token")
+        if not user_access_token:
+            raise HTTPException(status_code=400, detail="No access token in response.")
+
+        # 2. Exchange short-lived token for long-lived User Access Token
+        long_lived_url = f"https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id={FB_APP_ID}&client_secret={FB_APP_SECRET}&fb_exchange_token={user_access_token}"
+        res = requests.get(long_lived_url)
+        if res.status_code == 200:
+            user_access_token = res.json().get("access_token", user_access_token)
+
+        # 3. Get User's Pages to find the connected Instagram Account
+        pages_url = f"https://graph.facebook.com/v17.0/me/accounts?access_token={user_access_token}"
+        print(f"Fetching Pages from: {pages_url}")
+        res = requests.get(pages_url)
+        print(f"Pages response status: {res.status_code}")
+        if res.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch pages: {res.text}")
+        
+        pages_data = res.json().get("data", [])
+        print(f"Pages data: {pages_data}")
+        
+        instagram_business_account_id = None
+        page_access_token = None
+        fb_page_id_to_store = None
+        
+        for page in pages_data:
+            page_id = page.get("id")
+            p_token = page.get("access_token")
+            
+            ig_url = f"https://graph.facebook.com/v17.0/{page_id}?fields=instagram_business_account&access_token={p_token}"
+            ig_res = requests.get(ig_url)
+            print(f"Page {page_id} IG response ({ig_res.status_code}): {ig_res.text}")
+            if ig_res.status_code == 200:
+                ig_data = ig_res.json()
+                if "instagram_business_account" in ig_data:
+                    instagram_business_account_id = ig_data["instagram_business_account"]["id"]
+                    page_access_token = p_token
+                    fb_page_id_to_store = page_id
+                    break
+                    
+        if not instagram_business_account_id:
+            raise HTTPException(status_code=400, detail="No linked Instagram Business Account found.")
+            
+        # Get Instagram Username
+        ig_user_url = f"https://graph.facebook.com/v17.0/{instagram_business_account_id}?fields=username&access_token={page_access_token}"
+        ig_user_res = requests.get(ig_user_url)
+        if ig_user_res.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch Instagram username.")
+            
+        ig_username = ig_user_res.json().get("username")
+        print(f"Found IG username: {ig_username}")
+        
+        # Upsert Creator in DB
+        creator = db.query(Creator).filter(Creator.instagram_username == ig_username).first()
+        if not creator:
+            creator = Creator(
+                instagram_username=ig_username,
+                is_mock=False,
+                access_token=page_access_token,
+                fb_page_id=fb_page_id_to_store,
+                fb_page_access_token=page_access_token,
+                ig_user_id=instagram_business_account_id,
+                long_lived_token=user_access_token,
+                dm_templates=json.dumps([
+                    "Hi @{username}, thanks for the comment! Here is the link: https://bit.ly/my-special-link",
+                    "Hey @{username}! Appreciate your support. Direct link sent: https://bit.ly/my-special-link",
+                    "Hello @{username}, of course! Check it out here: https://bit.ly/my-special-link",
+                    "Hi there @{username}! Details are here: https://bit.ly/my-special-link. Let me know what you think!"
+                ]),
+                lead_keywords="price,buy,link,dm,how much,cost,details,purchase,collaborate",
+                lead_dm_templates=json.dumps([
+                    "Hey @{username}, thanks for asking! Sent details of pricing & checkout link to your DMs 📦",
+                    "Hi @{username}! I've messaged you the details & purchase link. Please check your inbox requests!",
+                    "Hello @{username}, details sent! Check your message requests for the link. 🛒",
+                    "Hey @{username}! Sent you a DM with all details + discount code!"
+                ])
+            )
+            db.add(creator)
+        else:
+            creator.is_mock = False
+            creator.access_token = page_access_token
+            creator.fb_page_id = fb_page_id_to_store
+            creator.fb_page_access_token = page_access_token
+            creator.ig_user_id = instagram_business_account_id
+            creator.long_lived_token = user_access_token
+            
+        db.commit()
+        db.refresh(creator)
+        
+        # Ensure there's at least some initial mocked posts for UI if empty
+        seed_creator_posts(db, creator.id)
+        
+        print("=== FACEBOOK CALLBACK SUCCESS ===")
+        return creator
+
+    except HTTPException as he:
+        print(f"HTTPException in callback: {he.status_code} - {he.detail}")
+        traceback.print_exc()
+        raise he
+    except Exception as e:
+        print(f"Unexpected Exception in callback: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/auth/login", response_model=CreatorResponse)
 def login_creator(username: str, db: Session = Depends(get_db)):
@@ -211,11 +355,8 @@ def toggle_creator_mode(creator_id: int, payload: CreatorToggleMode, db: Session
     return creator
 
 def check_subscription(creator_id: int, db: Session):
-    creator = db.query(Creator).filter(Creator.id == creator_id).first()
-    if not creator:
-        raise HTTPException(status_code=404, detail="Creator not found")
-    if creator.subscription_status != "active":
-        raise HTTPException(status_code=402, detail="Active subscription required")
+    # Free version: all creators have access
+    pass
 
 @app.get("/api/posts/{creator_id}", response_model=List[MediaPostResponse])
 def get_posts(creator_id: int, db: Session = Depends(get_db)):
@@ -385,139 +526,8 @@ def get_loyal_fans(creator_id: int, db: Session = Depends(get_db)):
     return result
 
 
-# --- PAYMENT & SUBSCRIPTION ROUTES ---
+# --- PAYMENT & SUBSCRIPTION ROUTES REMOVED ---
 
-@app.post("/api/payments/create-checkout-session")
-def create_checkout_session(creator_id: int, db: Session = Depends(get_db)):
-    """Creates a Razorpay subscription or returns mock checkout for a creator."""
-    creator = db.query(Creator).filter(Creator.id == creator_id).first()
-    if not creator:
-        raise HTTPException(status_code=404, detail="Creator not found")
-        
-    # If using mock key, return a mock checkout URL for easy testing
-    if RAZORPAY_KEY_ID == "rzp_test_mockKey":
-        return {"url": f"{FRONTEND_URL}?mock_checkout=true&creator_id={creator_id}"}
-        
-    if not razorpay_client:
-        raise HTTPException(status_code=500, detail="Razorpay client not configured properly")
-        
-    try:
-        # Find or create a monthly subscription plan
-        plan_id = None
-        try:
-            plans = razorpay_client.plan.all()
-            for p in plans.get("items", []):
-                if p.get("item", {}).get("name") == "InstaMod Premium":
-                    plan_id = p.get("id")
-                    break
-        except Exception as e:
-            print(f"[Razorpay Plan Fetch Warning] {str(e)}")
-            
-        if not plan_id:
-            try:
-                plan_payload = {
-                    "period": "monthly",
-                    "interval": 1,
-                    "item": {
-                        "name": "InstaMod Premium",
-                        "amount": 149900,  # ₹1499.00 in paise
-                        "currency": "INR",
-                        "description": "Instagram Comment Moderation & Auto-DM service"
-                    }
-                }
-                plan = razorpay_client.plan.create(plan_payload)
-                plan_id = plan["id"]
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to create Razorpay plan: {str(e)}")
-                
-        # Create subscription
-        sub_payload = {
-            "plan_id": plan_id,
-            "customer_notify": 1,
-            "total_count": 120, # 10 years duration
-            "notes": {
-                "creator_id": str(creator_id)
-            }
-        }
-        subscription = razorpay_client.subscription.create(sub_payload)
-        
-        # Save subscription details to Creator DB
-        creator.razorpay_subscription_id = subscription["id"]
-        db.commit()
-        
-        return {
-            "subscription_id": subscription["id"],
-            "razorpay_key_id": RAZORPAY_KEY_ID
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/payments/webhook")
-async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
-    """Handles Razorpay Webhook events."""
-    payload = await request.body()
-    sig_header = request.headers.get("x-razorpay-signature")
-    
-    if RAZORPAY_KEY_ID == "rzp_test_mockKey":
-        return {"status": "mock_ignored"}
-        
-    if not sig_header:
-        raise HTTPException(status_code=400, detail="Missing signature header")
-        
-    # Verify webhook signature
-    try:
-        razorpay_client.utility.verify_webhook_signature(
-            payload.decode("utf-8"),
-            sig_header,
-            RAZORPAY_WEBHOOK_SECRET
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Signature verification failed: {str(e)}")
-        
-    try:
-        event_data = json.loads(payload.decode("utf-8"))
-        event_type = event_data.get("event")
-        
-        if event_type in ["subscription.activated", "subscription.charged"]:
-            payload_sub = event_data.get("payload", {}).get("subscription", {}).get("entity", {})
-            sub_id = payload_sub.get("id")
-            customer_id = payload_sub.get("customer_id")
-            
-            # Find the creator with this subscription ID
-            creator = db.query(Creator).filter(Creator.razorpay_subscription_id == sub_id).first()
-            if creator:
-                creator.subscription_status = "active"
-                creator.razorpay_customer_id = customer_id
-                creator.subscription_ends_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
-                db.commit()
-                print(f"[Razorpay Webhook] Activated subscription for creator {creator.instagram_username}")
-                
-        elif event_type in ["subscription.cancelled", "subscription.halted"]:
-            payload_sub = event_data.get("payload", {}).get("subscription", {}).get("entity", {})
-            sub_id = payload_sub.get("id")
-            
-            creator = db.query(Creator).filter(Creator.razorpay_subscription_id == sub_id).first()
-            if creator:
-                creator.subscription_status = "inactive"
-                db.commit()
-                print(f"[Razorpay Webhook] Suspended subscription for creator {creator.instagram_username}")
-                
-        return {"status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/payments/mock-activate")
-def mock_activate_subscription(creator_id: int, db: Session = Depends(get_db)):
-    """For testing without payments, instantly activates a creator's subscription."""
-    creator = db.query(Creator).filter(Creator.id == creator_id).first()
-    if not creator:
-        raise HTTPException(status_code=404, detail="Creator not found")
-        
-    creator.subscription_status = "active"
-    creator.subscription_ends_at = datetime.datetime.utcnow() + datetime.timedelta(days=30)
-    db.commit()
-    db.refresh(creator)
-    return creator
 
 
 
@@ -534,8 +544,8 @@ def simulate_new_comment(payload: CommentCreateMock, db: Session = Depends(get_d
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
         
-    if creator.subscription_status != "active":
-        raise HTTPException(status_code=402, detail="Active subscription required")
+    # Free version check bypassed
+    pass
 
     username = payload.username.strip().replace("@", "")
     if not username:
@@ -730,3 +740,67 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
         update_commenter_stats(db, commenter)
 
     return {"status": "success", "message": f"Successfully seeded mock data for creator {creator_id}"}
+
+
+# --- INSTAGRAM WEBHOOKS ---
+
+@app.get("/api/webhooks/instagram")
+def verify_webhook(
+    mode: str = Query(None, alias="hub.mode"),
+    token: str = Query(None, alias="hub.verify_token"),
+    challenge: str = Query(None, alias="hub.challenge")
+):
+    """Verifies the webhook with Meta."""
+    if mode == "subscribe" and challenge:
+        return int(challenge)
+    raise HTTPException(status_code=403, detail="Verification failed")
+
+@app.post("/api/webhooks/instagram")
+async def handle_webhook(request: Request, db: Session = Depends(get_db)):
+    """Handles incoming live comments/messages from Instagram."""
+    payload = await request.json()
+    
+    if payload.get("object") == "instagram":
+        for entry in payload.get("entry", []):
+            ig_user_id = entry.get("id")
+            creator = db.query(Creator).filter(Creator.ig_user_id == ig_user_id).first()
+            if not creator:
+                continue
+                
+            for change in entry.get("changes", []):
+                if change.get("field") == "comments":
+                    val = change.get("value", {})
+                    comment_text = val.get("text")
+                    comment_id = val.get("id")
+                    media_id = val.get("media", {}).get("id")
+                    from_user = val.get("from", {}).get("username")
+                    
+                    if not comment_text or not from_user:
+                        continue
+                        
+                    category, risk_score = classify_comment(comment_text)
+                    
+                    db_comment = Comment(
+                        id=comment_id,
+                        media_id=media_id,
+                        username=from_user,
+                        text=comment_text,
+                        category=category
+                    )
+                    db.add(db_comment)
+                    db.commit()
+                    
+                    commenter = db.query(Commenter).filter(Commenter.username == from_user, Commenter.creator_id == creator.id).first()
+                    if not commenter:
+                        commenter = Commenter(username=from_user, creator_id=creator.id)
+                        db.add(commenter)
+                        db.commit()
+                        db.refresh(commenter)
+                    update_commenter_stats(db, commenter)
+                    
+                    if category == "Lead":
+                        enqueue_dm(db, creator.id, from_user, comment_id, is_lead=True)
+                    elif category == "Normal":
+                        enqueue_dm(db, creator.id, from_user, comment_id, is_lead=False)
+
+    return {"status": "ok"}

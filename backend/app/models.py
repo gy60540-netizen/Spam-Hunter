@@ -13,12 +13,18 @@ class Creator(Base):
     lead_keywords = Column(Text, default="price,buy,link,dm,how much,cost,details,purchase,collaborate,want,need,interested,me,info,kitne ka hai,kahan,online,review,code,genuine")
     lead_dm_templates = Column(Text, default="[]") # JSON list of strings
     is_mock = Column(Boolean, default=True)
-    subscription_status = Column(String, default="inactive")
+    subscription_status = Column(String, default="active")
     subscription_ends_at = Column(DateTime, nullable=True)
     stripe_customer_id = Column(String, nullable=True)
     stripe_subscription_id = Column(String, nullable=True)
     razorpay_customer_id = Column(String, nullable=True)
     razorpay_subscription_id = Column(String, nullable=True)
+    
+    # Meta / Instagram Live Integration Fields
+    fb_page_id = Column(String, nullable=True)
+    fb_page_access_token = Column(String, nullable=True)
+    ig_user_id = Column(String, nullable=True)
+    long_lived_token = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

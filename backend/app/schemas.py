@@ -17,6 +17,8 @@ class CreatorResponse(CreatorBase):
     lead_dm_templates: str
     subscription_status: str
     subscription_ends_at: Optional[datetime]
+    fb_page_id: Optional[str] = None
+    ig_user_id: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -129,4 +131,9 @@ class LoyalFanResponse(BaseModel):
     active_weeks: int
     active_months: int
     loyalty_tier: str
+
+class FacebookCallbackRequest(BaseModel):
+    code: str
+    redirect_uri: Optional[str] = None
+
 

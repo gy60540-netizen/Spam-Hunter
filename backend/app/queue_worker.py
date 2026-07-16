@@ -2,6 +2,7 @@ import asyncio
 import json
 import random
 import datetime
+import requests
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .models import Creator, DMQueueItem, Comment
@@ -66,8 +67,8 @@ def enqueue_dm(db: Session, creator_id: int, recipient_username: str, comment_id
         DMQueueItem.status == "PENDING"
     ).order_by(DMQueueItem.scheduled_for.desc()).first()
 
-    # Calculate random delay (jitter): 8 to 20 seconds for the demo
-    delay_seconds = random.randint(8, 20)
+    # Calculate random delay (jitter): 3 to 5 seconds
+    delay_seconds = random.randint(3, 5)
 
     if latest_item and latest_item.scheduled_for > now:
         # Schedule it after the latest item with additional random delay
@@ -126,14 +127,39 @@ async def run_dm_queue_worker():
                     # Simulation Mode: success
                     item.status = "SENT"
                     item.sent_at = datetime.datetime.utcnow()
+                    print(f"[Worker] DM sent to @{item.recipient_username} successfully (MOCK).")
                 else:
-                    # Real mode: Here you would integrate the real Instagram Graph API Call
-                    # For MVP skeleton, we mark it as SENT as well.
-                    item.status = "SENT"
-                    item.sent_at = datetime.datetime.utcnow()
+                    # Real mode: Integrate real Instagram Graph API Call
+                    if not creator.access_token:
+                        item.status = "FAILED"
+                        item.error_message = "No Page Access Token found"
+                        print(f"[Worker] DM to @{item.recipient_username} failed: No Page Access Token found")
+                    else:
+                        if not creator.ig_user_id:
+                            item.status = "FAILED"
+                            item.error_message = "No Instagram User ID found"
+                            print(f"[Worker] DM to @{item.recipient_username} failed: No Instagram User ID found")
+                        else:
+                            url = f"https://graph.facebook.com/v17.0/{creator.ig_user_id}/messages?access_token={creator.access_token}"
+                            payload = {
+                                "recipient": {
+                                    "comment_id": item.comment_id
+                                },
+                                "message": {
+                                    "text": item.message_text
+                                }
+                            }
+                        res = requests.post(url, json=payload)
+                        if res.status_code == 200:
+                            item.status = "SENT"
+                            item.sent_at = datetime.datetime.utcnow()
+                            print(f"[Worker] DM sent to @{item.recipient_username} successfully.")
+                        else:
+                            item.status = "FAILED"
+                            item.error_message = res.text
+                            print(f"[Worker] DM to @{item.recipient_username} failed: {res.text}")
                 
                 db.commit()
-                print(f"[Worker] DM sent to @{item.recipient_username} successfully.")
 
             db.close()
         except Exception as e:

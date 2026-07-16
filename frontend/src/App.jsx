@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp, API_BASE_URL } from './context/AppContext';
 
 import { 
@@ -30,43 +30,41 @@ import {
 } from 'lucide-react';
 
 function App() {
-  const { creator, error, login, logout } = useApp();
+  const { creator, error, login, loginWithFacebookCode, logout, metaConfig, loading: appLoading } = useApp();
   const [usernameInput, setUsernameInput] = useState('');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [sandboxMode, setSandboxMode] = useState(false);
+
+  const codeProcessed = useRef(false);
+
+  useEffect(() => {
+    // Check for OAuth callback
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    if (code && !codeProcessed.current) {
+      codeProcessed.current = true;
+      setAuthLoading(true);
+      loginWithFacebookCode(code).then(() => {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setAuthLoading(false);
+      });
+    }
+  }, [loginWithFacebookCode]);
+
+  const handleFacebookLogin = () => {
+    if (!metaConfig || !metaConfig.app_id) return;
+    const redirectUri = encodeURIComponent(window.location.origin + '/');
+    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${metaConfig.app_id}&redirect_uri=${redirectUri}&scope=instagram_manage_comments,pages_show_list,instagram_basic,instagram_manage_messages,pages_read_engagement,business_management`;
+    window.location.href = authUrl;
+  };
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Handle Stripe & Mock checkout redirects
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const mockCheckout = params.get('mock_checkout');
-    const checkoutSuccess = params.get('checkout_success');
-    const creatorId = params.get('creator_id');
-
-    if (mockCheckout && creatorId) {
-      // Simulate webhook on mock-activate to unlock subscription
-      fetch(`${API_BASE_URL}/payments/mock-activate?creator_id=${creatorId}`, {
-
-        method: 'POST'
-      })
-      .then(res => {
-        if (res.ok) return res.json();
-      })
-      .then(data => {
-        if (data) {
-          localStorage.setItem('instagram_creator', JSON.stringify(data));
-          window.location.href = '/'; // Refresh to dashboard
-        }
-      });
-    }
-
-    if (checkoutSuccess) {
-      window.location.href = '/';
-    }
-  }, []);
+  // Checkout redirects removed for free version
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -82,13 +80,37 @@ function App() {
         >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
-        <div className="glass-card login-card" style={{ textAlign: 'center', borderColor: '#f43f5e' }}>
-          <AlertTriangle size={48} color="#f43f5e" style={{ marginBottom: 15 }} />
+        <div className="glass-card login-card" style={{ textAlign: 'center', maxWidth: 400 }}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ 
+              width: 64, height: 64, borderRadius: '50%', 
+              backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto' 
+            }}>
+              <AlertTriangle size={32} color="#ef4444" />
+            </div>
+          </div>
           <h2 style={{ marginBottom: 10 }}>Connection Error</h2>
-          <p style={{ color: '#9ca3af', marginBottom: 20 }}>{error}</p>
+          <p style={{ color: '#9ca3af', marginBottom: 10 }}>{error}</p>
+          <p style={{ color: '#6b7280', fontSize: '12px', marginBottom: 20, wordBreak: 'break-all' }}>
+            Debug URL: {API_BASE_URL}/auth/facebook-callback
+          </p>
           <button className="btn-primary" onClick={() => window.location.reload()}>
             <RotateCcw size={16} /> Retry Connection
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading || appLoading) {
+    return (
+      <div className="login-container">
+        <div className="glass-card login-card" style={{ textAlign: 'center' }}>
+          <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40 }}></div>
+          <h2>Connecting...</h2>
+          <p style={{ color: '#9ca3af' }}>Please wait while we authenticate your account.</p>
         </div>
       </div>
     );
@@ -113,36 +135,55 @@ function App() {
             <p>Intelligence & Spam Protection Platform</p>
           </div>
           
-          <form onSubmit={(e) => { e.preventDefault(); login(usernameInput); }}>
-            <div className="form-group">
-              <label>Instagram Username</label>
-              <div className="input-with-icon">
-                <span className="input-prefix">@</span>
-                <input 
-                  type="text" 
-                  placeholder="yourname" 
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  required 
-                />
-              </div>
-            </div>
-            <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
-              Connect Account <Sparkles size={16} />
+          <button 
+            className="btn-primary" 
+            style={{ width: '100%', justifyContent: 'center', marginBottom: 15, background: '#1877F2', border: 'none', padding: '12px 20px' }}
+            onClick={handleFacebookLogin}
+            disabled={!metaConfig}
+          >
+            <Globe size={18} style={{ marginRight: 8 }} /> Continue with Facebook
+          </button>
+          
+          <div style={{ textAlign: 'center', margin: '15px 0' }}>
+            <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>OR</span>
+          </div>
+
+          {!sandboxMode ? (
+            <button 
+              className="btn-secondary" 
+              style={{ width: '100%', justifyContent: 'center' }}
+              onClick={() => setSandboxMode(true)}
+            >
+              Enter Sandbox Testing Mode
             </button>
-          </form>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); login(usernameInput); }}>
+              <div className="form-group">
+                <label>Sandbox Instagram Username</label>
+                <div className="input-with-icon">
+                  <span className="input-prefix">@</span>
+                  <input 
+                    type="text" 
+                    placeholder="yourname" 
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    required 
+                  />
+                </div>
+              </div>
+              <button type="submit" className="btn-secondary" style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
+                Connect Sandbox <Sparkles size={16} />
+              </button>
+            </form>
+          )}
 
           <div className="login-footer">
             <Info size={14} style={{ marginRight: 6 }} />
-            <span>Connects via simulated sandbox for safety.</span>
+            <span>Connects to Meta API or Sandbox for safety.</span>
           </div>
         </div>
       </div>
     );
-  }
-
-  if (creator.subscription_status !== "active") {
-    return <PaywallScreen creator={creator} logout={logout} theme={theme} toggleTheme={toggleTheme} />;
   }
 
   return <DashboardLayout theme={theme} toggleTheme={toggleTheme} />;
@@ -155,7 +196,6 @@ function DashboardLayout({ theme, toggleTheme }) {
 
   return (
     <div className="dashboard-wrapper">
-      {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-brand flex-between" style={{ width: '100%' }}>
           <div className="flex-row">
@@ -211,7 +251,6 @@ function DashboardLayout({ theme, toggleTheme }) {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="main-content">
         <header className="content-header">
           <div>
@@ -244,7 +283,6 @@ function DashboardLayout({ theme, toggleTheme }) {
         </div>
       </main>
 
-      {/* Floating simulator panel */}
       {simulatorOpen && <SimulatorPanel onClose={() => setSimulatorOpen(false)} />}
     </div>
   );
@@ -257,14 +295,12 @@ function OverviewTab() {
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
 
-  // Auto-select first post when posts load
   useEffect(() => {
     if (posts.length > 0) {
       setSelectedPostId(posts[0].id);
     }
   }, [posts]);
 
-  // Fetch comments when selectedPostId or stats change (to sync live simulations)
   useEffect(() => {
     if (selectedPostId) {
       loadComments(selectedPostId);
@@ -295,7 +331,6 @@ function OverviewTab() {
 
   return (
     <div>
-      {/* Analytics Cards */}
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
         <div className="glass-card stat-card">
           <div className="stat-header">
@@ -343,7 +378,6 @@ function OverviewTab() {
         </div>
       </div>
 
-      {/* Visual Chart Card */}
       <div className="glass-card" style={{ padding: 25, marginBottom: 25 }}>
         <div className="flex-between" style={{ marginBottom: 15 }}>
           <h2>Audience Engagement & Content Health</h2>
@@ -393,7 +427,6 @@ function OverviewTab() {
         </div>
       </div>
 
-      {/* Post-Specific Comment Inspector */}
       <div className="glass-card table-card" style={{ marginBottom: 25 }}>
         <div className="card-header flex-between" style={{ paddingBottom: 15 }}>
           <div className="flex-row" style={{ gap: 10 }}>
@@ -426,7 +459,6 @@ function OverviewTab() {
           </div>
         </div>
 
-        {/* Post-Specific Mini Stats Row */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(5, 1fr)',
@@ -506,7 +538,6 @@ function OverviewTab() {
         </div>
       </div>
 
-      {/* Top Tables */}
       <div className="grid-cols-2">
         <div className="glass-card table-card">
           <div className="card-header">
@@ -582,10 +613,9 @@ function OverviewTab() {
   );
 }
 
-// --- USER INTELLIGENCE TAB ---
 function CommentersTab() {
   const { commenters, loyalFans } = useApp();
-  const [subTab, setSubTab] = useState('all'); // all, loyal
+  const [subTab, setSubTab] = useState('all'); 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [userHistory, setUserHistory] = useState([]);
@@ -753,7 +783,6 @@ function CommentersTab() {
         </div>
       </div>
 
-      {/* Right side history drawer/card */}
       {selectedUser && (
         <div className="glass-card history-drawer" style={{ width: '450px' }}>
           <div className="card-header flex-between" style={{ borderBottom: '1px solid var(--border-glass)' }}>
@@ -801,7 +830,6 @@ function CommentersTab() {
   );
 }
 
-// --- AUTO-DM QUEUE TAB ---
 function QueueTab() {
   const { queue } = useApp();
 
@@ -859,7 +887,6 @@ function QueueTab() {
   );
 }
 
-// --- CONTROL CENTER & SETTINGS TAB ---
 function TemplatesTab() {
   const { creator, updateTemplates, updateLeadTemplates, updateLeadKeywords, toggleCreatorMode } = useApp();
   const [normalTemplates, setNormalTemplates] = useState([]);
@@ -919,7 +946,6 @@ function TemplatesTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: '850px', margin: '0 auto' }}>
       
-      {/* 1. Mode Settings */}
       <div className="glass-card" style={{ padding: 25 }}>
         <div className="flex-between" style={{ marginBottom: 15 }}>
           <div>
@@ -943,28 +969,38 @@ function TemplatesTab() {
 
         {!creator.is_mock ? (
           <div className="live-credentials-form" style={{ marginTop: 15, display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border-glass)', paddingTop: 15 }}>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <div className="form-group-sim" style={{ flex: 1 }}>
-                <label>Meta App ID</label>
-                <input type="text" placeholder="e.g. 192834019284" value={appId} onChange={(e) => setAppId(e.target.value)} />
+            {creator.fb_page_id || creator.ig_user_id ? (
+              <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.2)', borderRadius: 'var(--radius-sm)', padding: 15, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-normal)', fontWeight: 600 }}>
+                  <CheckCircle size={18} />
+                  Successfully Connected to Meta
+                </div>
+                <div style={{ display: 'flex', gap: 20, fontSize: '0.85rem', color: '#d1d5db' }}>
+                  <div>
+                    <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Facebook Page ID</span>
+                    {creator.fb_page_id || 'Not Set'}
+                  </div>
+                  <div>
+                    <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Instagram Account ID</span>
+                    {creator.ig_user_id || 'Not Set'}
+                  </div>
+                </div>
               </div>
-              <div className="form-group-sim" style={{ flex: 1 }}>
-                <label>Facebook Page ID</label>
-                <input type="text" placeholder="e.g. 109284019" value={pageId} onChange={(e) => setPageId(e.target.value)} />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0', gap: 15 }}>
+                <p style={{ color: '#d1d5db', fontSize: '0.9rem', textAlign: 'center' }}>
+                  To enable live Instagram integration, you must connect your Meta account.
+                </p>
+                <button 
+                  type="button" 
+                  className="btn-primary" 
+                  onClick={handleFacebookLogin}
+                  style={{ background: '#1877F2', borderColor: '#1877F2', fontSize: '0.95rem', padding: '10px 20px' }}
+                >
+                  <Globe size={18} /> Connect with Facebook
+                </button>
               </div>
-            </div>
-            <div className="form-group-sim">
-              <label>Permanent Page Access Token</label>
-              <input type="password" placeholder="EAABw2..." value={pageToken} onChange={(e) => setPageToken(e.target.value)} />
-            </div>
-            <div className="flex-between" style={{ marginTop: 5 }}>
-              <span style={{ fontSize: '0.78rem', color: '#f43f5e' }} className="flex-row">
-                <Info size={12} style={{ marginRight: 4 }} /> Configuration credentials stored locally.
-              </span>
-              <button type="button" className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.82rem' }} onClick={() => alert("Credentials saved successfully (Mock Live Mode Connected)")}>
-                Save Live Configurations
-              </button>
-            </div>
+            )}
           </div>
         ) : (
           <div style={{ background: 'rgba(245, 158, 11, 0.04)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: 'var(--radius-sm)', padding: 12, display: 'flex', gap: 10, fontSize: '0.82rem', color: 'var(--color-spam)' }}>
@@ -974,7 +1010,6 @@ function TemplatesTab() {
         )}
       </div>
 
-      {/* 2. Lead Keyword configurations */}
       <div className="glass-card" style={{ padding: 25 }}>
         <h2>Lead Keyword Settings</h2>
         <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: 15 }}>
@@ -1003,9 +1038,7 @@ function TemplatesTab() {
         </div>
       </div>
 
-      {/* 3. Normal & Lead Templates Split */}
       <div className="grid-cols-2">
-        {/* Standard Templates */}
         <div className="glass-card" style={{ padding: 20 }}>
           <h3 style={{ fontSize: '1rem', marginBottom: 5 }}>Standard DM Replies</h3>
           <p style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: 15 }}>Rotated randomly for normal comments.</p>
@@ -1035,7 +1068,6 @@ function TemplatesTab() {
           </div>
         </div>
 
-        {/* Lead Specific Templates */}
         <div className="glass-card" style={{ padding: 20 }}>
           <h3 style={{ fontSize: '1rem', marginBottom: 5, color: 'var(--color-lead)' }}>Lead-Specific DM Replies</h3>
           <p style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: 15 }}>Sent when comment is classified as a Lead.</p>
@@ -1069,7 +1101,6 @@ function TemplatesTab() {
   );
 }
 
-// --- MOCK COMMENTS SIMULATOR PANEL ---
 function SimulatorPanel({ onClose }) {
   const { posts, triggerMockComment } = useApp();
   const [mediaId, setMediaId] = useState('');
@@ -1214,122 +1245,6 @@ function SimulatorPanel({ onClose }) {
             <span>🤬 Hate / Toxic User</span>
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PaywallScreen({ creator, logout, theme, toggleTheme }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubscribe = async () => {
-    setSubmitting(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/payments/create-checkout-session?creator_id=${creator.id}`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Failed to create payment checkout session.');
-      const data = await res.json();
-      
-      if (data.url) {
-        // Mock checkout redirect
-        window.location.href = data.url;
-        return;
-      }
-      
-      if (data.subscription_id && data.razorpay_key_id) {
-        const options = {
-          key: data.razorpay_key_id,
-          subscription_id: data.subscription_id,
-          name: "InstaMod Premium",
-          description: "Instagram Comment Moderation & Auto-DM service",
-          handler: async function (response) {
-            setSubmitting(true);
-            // Wait 2.5 seconds for Razorpay webhook to process
-            await new Promise(resolve => setTimeout(resolve, 2500));
-            window.location.href = `/?checkout_success=true&creator_id=${creator.id}`;
-          },
-          prefill: {
-            name: creator.instagram_username,
-            email: `${creator.instagram_username}@example.com`
-          },
-          theme: {
-            color: "#3F8CFF"
-          }
-        };
-        const rzp = new window.Razorpay(options);
-        rzp.open();
-      } else {
-        throw new Error('Invalid response from server.');
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-
-  return (
-    <div className="login-container">
-      <button 
-        className="theme-toggle-btn" 
-        style={{ position: 'absolute', top: 20, right: 20 }}
-        onClick={toggleTheme}
-      >
-        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-      </button>
-
-      <div className="glass-card login-card" style={{ maxWidth: '480px', textAlign: 'center' }}>
-        <div style={{ marginBottom: 20 }}>
-          <Sparkles size={48} color="var(--color-primary)" style={{ margin: '0 auto 15px auto' }} />
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: 8 }}>InstaMod Premium</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            Get access to automated comments moderation, AI spam classification, and instant DMs.
-          </p>
-        </div>
-
-        {error && (
-          <div style={{ background: 'rgba(244, 63, 94, 0.1)', color: 'var(--color-hate)', padding: 10, borderRadius: 8, fontSize: '0.85rem', marginBottom: 15 }}>
-            {error}
-          </div>
-        )}
-
-        <div style={{
-          background: 'var(--bg-timeline)',
-          border: '1px solid var(--border-glass)',
-          borderRadius: '12px',
-          padding: '20px',
-          marginBottom: '25px',
-          textAlign: 'left'
-        }}>
-          <div className="flex-between" style={{ marginBottom: '15px', borderBottom: '1px solid var(--border-glass)', paddingBottom: '10px' }}>
-            <span style={{ fontWeight: 600 }}>Standard SaaS Plan</span>
-            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-primary)' }}>$19.00 / mo</span>
-          </div>
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)', paddingLeft: 0, margin: 0 }}>
-            <li>✓ Unlimited comments monitoring</li>
-            <li>✓ Auto-reply rotated templates</li>
-            <li>✓ Smart lead capture detection</li>
-            <li>✓ Anti-spam & Toxic keyword filter</li>
-            <li>✓ 24/7 background queue worker</li>
-          </ul>
-        </div>
-
-        <button 
-          onClick={handleSubscribe} 
-          className="btn-primary" 
-          style={{ width: '100%', justifyContent: 'center', marginBottom: 15, padding: '12px' }}
-          disabled={submitting}
-        >
-          {submitting ? 'Connecting...' : 'Subscribe & Unlock Now'} <Sparkles size={16} />
-        </button>
-
-        <button onClick={logout} className="btn-secondary" style={{ width: '100%', justifyContent: 'center' }}>
-          <LogOut size={16} /> Log Out
-        </button>
       </div>
     </div>
   );
