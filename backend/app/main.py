@@ -933,3 +933,56 @@ async def handle_webhook(request: Request, background_tasks: BackgroundTasks, db
                         background_tasks.add_task(process_creator_pending_dms, creator.id)
 
     return {"status": "ok"}
+
+
+@app.get("/api/debug-db-status")
+def debug_db_status(db: Session = Depends(get_db)):
+    try:
+        creators = db.query(Creator).all()
+        posts = db.query(MediaPost).all()
+        comments = db.query(Comment).all()
+        
+        creator_list = []
+        for c in creators:
+            creator_list.append({
+                "id": c.id,
+                "instagram_username": c.instagram_username,
+                "is_mock": c.is_mock,
+                "has_access_token": bool(c.access_token),
+                "ig_user_id": c.ig_user_id
+            })
+            
+        post_list = []
+        for p in posts:
+            post_list.append({
+                "id": p.id,
+                "creator_id": p.creator_id,
+                "caption": p.caption[:30] if p.caption else "",
+                "created_at": str(p.created_at)
+            })
+
+        db_url_masked = "Unknown"
+        from .database import DATABASE_URL
+        if DATABASE_URL:
+            if "@" in DATABASE_URL:
+                parts = DATABASE_URL.split("@")
+                db_url_masked = parts[0].split(":")[0] + "://***:***@" + parts[1]
+            else:
+                db_url_masked = DATABASE_URL
+                
+        return {
+            "status": "success",
+            "database_url": db_url_masked,
+            "creators_count": len(creators),
+            "posts_count": len(posts),
+            "comments_count": len(comments),
+            "creators": creator_list,
+            "posts": post_list
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
