@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 # SQLite Database URL or Environment Database URL
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or os.getenv("STORAGE_URL")
 
 if not DATABASE_URL:
     if "/var/task" in os.path.abspath(__file__) or os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None:
