@@ -176,10 +176,12 @@ async def process_creator_pending_dms(creator_id: int):
     """
     db = SessionLocal()
     try:
-        # Fetch all pending items
+        # Fetch all pending items whose scheduled time has passed
+        now = datetime.datetime.utcnow()
         pending_items = db.query(DMQueueItem).filter(
             DMQueueItem.creator_id == creator_id,
-            DMQueueItem.status == "PENDING"
+            DMQueueItem.status == "PENDING",
+            DMQueueItem.scheduled_for <= now
         ).order_by(DMQueueItem.scheduled_for.asc()).all()
 
         for item in pending_items:

@@ -436,8 +436,9 @@ def get_commenter_history(username: str, db: Session = Depends(get_db)):
 # --- DM QUEUE ---
 
 @app.get("/api/queue/{creator_id}", response_model=List[DMQueueItemResponse])
-def get_dm_queue(creator_id: int, db: Session = Depends(get_db)):
+async def get_dm_queue(creator_id: int, db: Session = Depends(get_db)):
     check_subscription(creator_id, db)
+    await process_creator_pending_dms(creator_id)
     return db.query(DMQueueItem).filter(
         DMQueueItem.creator_id == creator_id
     ).order_by(DMQueueItem.scheduled_for.desc()).all()
@@ -747,10 +748,10 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
 sync_lock = threading.Lock()
 
 @app.post("/api/creators/{creator_id}/sync")
-def sync_instagram_data(creator_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def sync_instagram_data(creator_id: int, db: Session = Depends(get_db)):
     with sync_lock:
         res = _sync_instagram_data_internal(creator_id, db)
-        background_tasks.add_task(process_creator_pending_dms, creator_id)
+        await process_creator_pending_dms(creator_id)
         return res
 
 def _sync_instagram_data_internal(creator_id: int, db: Session):
