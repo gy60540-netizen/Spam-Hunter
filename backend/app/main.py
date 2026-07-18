@@ -747,9 +747,11 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
 sync_lock = threading.Lock()
 
 @app.post("/api/creators/{creator_id}/sync")
-def sync_instagram_data(creator_id: int, db: Session = Depends(get_db)):
+def sync_instagram_data(creator_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     with sync_lock:
-        return _sync_instagram_data_internal(creator_id, db)
+        res = _sync_instagram_data_internal(creator_id, db)
+        background_tasks.add_task(process_creator_pending_dms, creator_id)
+        return res
 
 def _sync_instagram_data_internal(creator_id: int, db: Session):
     """Fetches real posts and comments from the Instagram Graph API and syncs them to the DB."""
@@ -863,6 +865,10 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
                         
                         # Recalculate and update commenter's statistics & risk score
                         update_commenter_stats(db, commenter)
+                        
+                        # Enqueue auto-DM response for new real comments during sync
+                        if category in ["Lead", "Normal"]:
+                            enqueue_dm(db, creator.id, username, comment_id)
 
         return {"status": "success", "message": f"Successfully synchronized posts and comments for @{creator.instagram_username}"}
 
