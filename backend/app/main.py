@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import random
 import os
+import threading
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -743,8 +744,14 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Successfully seeded mock data for creator {creator_id}"}
 
 
+sync_lock = threading.Lock()
+
 @app.post("/api/creators/{creator_id}/sync")
 def sync_instagram_data(creator_id: int, db: Session = Depends(get_db)):
+    with sync_lock:
+        return _sync_instagram_data_internal(creator_id, db)
+
+def _sync_instagram_data_internal(creator_id: int, db: Session):
     """Fetches real posts and comments from the Instagram Graph API and syncs them to the DB."""
     creator = db.query(Creator).filter(Creator.id == creator_id).first()
     if not creator:
