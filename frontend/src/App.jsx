@@ -624,12 +624,14 @@ function CommentersTab() {
   const [userHistory, setUserHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  const cleanSearchTerm = searchTerm.trim().startsWith('@') ? searchTerm.trim().substring(1) : searchTerm.trim();
+
   const filteredCommenters = commenters.filter(c => 
-    c.username.toLowerCase().includes(searchTerm.toLowerCase())
+    c.username.toLowerCase().includes(cleanSearchTerm.toLowerCase())
   );
 
   const filteredLoyalFans = loyalFans.filter(f =>
-    f.username.toLowerCase().includes(searchTerm.toLowerCase())
+    f.username.toLowerCase().includes(cleanSearchTerm.toLowerCase())
   );
 
   const viewUserHistory = async (username) => {
