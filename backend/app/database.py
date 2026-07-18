@@ -2,16 +2,28 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# SQLite Database URL
+# SQLite Database URL or Environment Database URL
 import os
-if "/var/task" in os.path.abspath(__file__) or os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None:
-    DATABASE_URL = "sqlite:////tmp/instagram_spam_moderator.db"
-else:
-    DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
+
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL")
+
+if not DATABASE_URL:
+    if "/var/task" in os.path.abspath(__file__) or os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None:
+        DATABASE_URL = "sqlite:////tmp/instagram_spam_moderator.db"
+    else:
+        DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
+
+# Format postgresql scheme for SQLAlchemy compatibility
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Create Database Engine
+connect_args = {}
+if "sqlite" in DATABASE_URL:
+    connect_args["check_same_thread"] = False
+
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    DATABASE_URL, connect_args=connect_args
 )
 
 # Sessionmaker for DB transactions

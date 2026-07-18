@@ -331,7 +331,7 @@ function OverviewTab() {
 
   return (
     <div>
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+      <div className="stats-grid">
         <div className="glass-card stat-card">
           <div className="stat-header">
             <span>Total Comments</span>
@@ -395,7 +395,7 @@ function OverviewTab() {
           {stats.total_comments === 0 && <div style={{ width: '100%', background: 'rgba(255,255,255,0.05)' }}></div>}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 15 }}>
+        <div className="health-grid">
           <div className="flex-row" style={{ gap: 10 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--color-normal)' }}></span>
             <div>
@@ -449,11 +449,14 @@ function OverviewTab() {
                 fontSize: '0.85rem',
                 outline: 'none',
                 minWidth: '240px',
+                maxWidth: '350px',
                 cursor: 'pointer'
               }}
             >
               {posts.map(p => (
-                <option key={p.id} value={p.id}>{p.caption || p.id}</option>
+                <option key={p.id} value={p.id} style={{ background: '#111524', color: 'white' }}>
+                  {p.caption ? (p.caption.length > 45 ? p.caption.substring(0, 45) + '...' : p.caption) : p.id}
+                </option>
               ))}
             </select>
           </div>
@@ -1182,7 +1185,7 @@ function SimulatorPanel({ onClose }) {
         <button className="btn-secondary" style={{ padding: '4px 8px' }} onClick={onClose}>Close</button>
       </div>
 
-      <div style={{ padding: 15 }}>
+      <div style={{ padding: 15, overflowY: 'auto', flex: 1 }}>
         <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: 15 }}>
           Test the system behavior by writing a custom comment or triggering one of the spam/hate simulation presets below.
         </p>

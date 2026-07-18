@@ -77,6 +77,17 @@ export const AppProvider = ({ children }) => {
     if (!creator) return;
     setLoading(true);
     try {
+      // Sync real Instagram data first if it's a live connection
+      if (!creator.is_mock) {
+        try {
+          await fetch(`${API_BASE_URL}/creators/${creator.id}/sync`, {
+            method: 'POST'
+          });
+        } catch (syncErr) {
+          console.error("Instagram synchronization failed:", syncErr);
+        }
+      }
+
       await Promise.all([
         fetchPosts(),
         fetchStats(),

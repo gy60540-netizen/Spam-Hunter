@@ -743,6 +743,128 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Successfully seeded mock data for creator {creator_id}"}
 
 
+@app.post("/api/creators/{creator_id}/sync")
+def sync_instagram_data(creator_id: int, db: Session = Depends(get_db)):
+    """Fetches real posts and comments from the Instagram Graph API and syncs them to the DB."""
+    creator = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    if creator.is_mock or not creator.access_token or not creator.ig_user_id:
+        return {"status": "skipped", "reason": "Mock creator or missing Meta credentials"}
+
+    try:
+        # 1. Fetch recent posts from Instagram Graph API (limit to last 10 posts)
+        media_url = f"https://graph.facebook.com/v17.0/{creator.ig_user_id}/media?fields=id,caption,permalink,media_type,timestamp&access_token={creator.access_token}&limit=10"
+        res = requests.get(media_url)
+        
+        if res.status_code != 200:
+            print(f"[Sync Error] Meta API response status: {res.status_code}, body: {res.text}")
+            return {"status": "failed", "reason": f"Meta API error: {res.text}"}
+
+        media_data = res.json().get("data", [])
+        
+        for post_data in media_data:
+            post_id = post_data.get("id")
+            caption = post_data.get("caption", "")
+            permalink = post_data.get("permalink", "")
+            media_type = post_data.get("media_type", "IMAGE")
+            ts_str = post_data.get("timestamp")
+            
+            # Parse timestamp to UTC datetime
+            created_at_dt = datetime.datetime.utcnow()
+            if ts_str:
+                try:
+                    created_at_dt = datetime.datetime.fromisoformat(ts_str.replace("+0000", "+00:00")).astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                except Exception as e:
+                    print(f"[Sync Warning] Failed to parse post timestamp {ts_str}: {e}")
+
+            # Upsert the MediaPost
+            post = db.query(MediaPost).filter(MediaPost.id == post_id).first()
+            if not post:
+                post = MediaPost(
+                    id=post_id,
+                    creator_id=creator.id,
+                    caption=caption,
+                    permalink=permalink,
+                    media_type=media_type,
+                    created_at=created_at_dt
+                )
+                db.add(post)
+            else:
+                post.caption = caption
+                post.permalink = permalink
+                post.media_type = media_type
+            db.commit()
+
+            # 2. Fetch comments for each post
+            comments_url = f"https://graph.facebook.com/v17.0/{post_id}/comments?fields=id,text,timestamp,username&access_token={creator.access_token}"
+            c_res = requests.get(comments_url)
+            
+            if c_res.status_code == 200:
+                comments_data = c_res.json().get("data", [])
+                for comment_data in comments_data:
+                    comment_id = comment_data.get("id")
+                    comment_text = comment_data.get("text", "")
+                    username = comment_data.get("username", "")
+                    c_ts_str = comment_data.get("timestamp")
+                    
+                    if not username:
+                        continue
+                    
+                    comment_dt = datetime.datetime.utcnow()
+                    if c_ts_str:
+                        try:
+                            comment_dt = datetime.datetime.fromisoformat(c_ts_str.replace("+0000", "+00:00")).astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                        except Exception as e:
+                            print(f"[Sync Warning] Failed to parse comment timestamp {c_ts_str}: {e}")
+
+                    # Check if comment already exists in DB
+                    existing_comment = db.query(Comment).filter(Comment.id == comment_id).first()
+                    if not existing_comment:
+                        # Find/Create commenter
+                        commenter = db.query(Commenter).filter(
+                            Commenter.username == username,
+                            Commenter.creator_id == creator.id
+                        ).first()
+                        
+                        if not commenter:
+                            commenter = Commenter(
+                                username=username,
+                                creator_id=creator.id,
+                                total_comments=0,
+                                last_commented_at=comment_dt
+                            )
+                            db.add(commenter)
+                            db.commit()
+                            db.refresh(commenter)
+                            
+                        # Classify the comment text
+                        lead_keywords_str = creator.lead_keywords or "price,buy,link,dm,how much,cost,details"
+                        category = classify_comment(db, username, post_id, comment_text, lead_keywords_str)
+                        
+                        new_comment = Comment(
+                            id=comment_id,
+                            media_id=post_id,
+                            username=username,
+                            text=comment_text,
+                            timestamp=comment_dt,
+                            category=category
+                        )
+                        db.add(new_comment)
+                        db.commit()
+                        
+                        # Recalculate and update commenter's statistics & risk score
+                        update_commenter_stats(db, commenter)
+
+        return {"status": "success", "message": f"Successfully synchronized posts and comments for @{creator.instagram_username}"}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database synchronization error: {str(e)}")
+
+
 # --- INSTAGRAM WEBHOOKS ---
 
 @app.get("/api/webhooks/instagram")
