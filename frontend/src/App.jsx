@@ -1403,7 +1403,7 @@ function DataDeletionPage({ setCurrentPath, theme, toggleTheme }) {
         
         <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>Option 2: Disconnecting via Facebook (Standard Way)</h2>
         <ol style={{ paddingLeft: 20, marginBottom: 15, color: 'var(--text-color)' }}>
-          <li style={{ marginBottom: 5 }}>Go to your Facebook profile's <strong>Settings & Privacy > Settings</strong>.</li>
+          <li style={{ marginBottom: 5 }}>Go to your Facebook profile's <strong>Settings &amp; Privacy &gt; Settings</strong>.</li>
           <li style={{ marginBottom: 5 }}>Click on <strong>Apps and Websites</strong> in the left sidebar menu.</li>
           <li style={{ marginBottom: 5 }}>Find <strong>Spam Hunter</strong> or <strong>InstaMod</strong> and click <strong>Remove</strong>.</li>
           <li style={{ marginBottom: 5 }}>This action triggers a data deletion request to our servers, and all associated access tokens and database records for your profile will be automatically purged within 24 hours.</li>
