@@ -35,6 +35,20 @@ function App() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [authLoading, setAuthLoading] = useState(false);
   const [sandboxMode, setSandboxMode] = useState(false);
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = (path) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
 
   const codeProcessed = useRef(false);
 
@@ -69,6 +83,16 @@ function App() {
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
+
+  if (currentPath === '/privacy') {
+    return <PrivacyPolicyPage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
+  }
+  if (currentPath === '/terms') {
+    return <TermsOfServicePage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
+  }
+  if (currentPath === '/data-deletion') {
+    return <DataDeletionPage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
+  }
 
   if (error && !creator) {
     return (
@@ -182,6 +206,14 @@ function App() {
             <span>Connects to Meta API or Sandbox for safety.</span>
           </div>
         </div>
+
+        <div className="login-legal-footer" style={{ marginTop: 20, display: 'flex', gap: 15, justifyContent: 'center', fontSize: '0.8rem', color: '#9ca3af', zIndex: 10 }}>
+          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateTo('/privacy')}>Privacy Policy</span>
+          <span>•</span>
+          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateTo('/terms')}>Terms of Service</span>
+          <span>•</span>
+          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateTo('/data-deletion')}>Data Deletion</span>
+        </div>
       </div>
     );
   }
@@ -244,10 +276,16 @@ function DashboardLayout({ theme, toggleTheme }) {
           </button>
         </nav>
 
-        <div className="sidebar-footer">
-          <button className="nav-item logout-btn" onClick={logout}>
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '15px 12px 10px' }}>
+          <button className="nav-item logout-btn" onClick={logout} style={{ width: '100%' }}>
             <LogOut size={18} /> Log Out
           </button>
+          
+          <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.72rem', color: '#9ca3af', opacity: 0.8 }}>
+            <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => window.open('/privacy', '_blank')}>Privacy Policy</span>
+            <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => window.open('/terms', '_blank')}>Terms of Service</span>
+            <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => window.open('/data-deletion', '_blank')}>Data Deletion Instructions</span>
+          </div>
         </div>
       </aside>
 
@@ -1250,6 +1288,129 @@ function SimulatorPanel({ onClose }) {
             <span>🤬 Hate / Toxic User</span>
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// --- LEGAL COMPLIANCE PAGES FOR META APP REVIEW ---
+
+function PrivacyPolicyPage({ setCurrentPath, theme, toggleTheme }) {
+  return (
+    <div className="login-container" style={{ overflowY: 'auto', padding: '40px 20px', display: 'block', height: '100vh' }}>
+      <button 
+        className="theme-toggle-btn" 
+        style={{ position: 'fixed', top: 20, right: 20 }}
+        onClick={toggleTheme}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+      
+      <div className="glass-card" style={{ maxWidth: 700, margin: '0 auto', padding: 30, textAlign: 'left' }}>
+        <button className="btn-secondary" style={{ marginBottom: 20 }} onClick={() => { setCurrentPath('/'); }}>
+          ← Back to Login
+        </button>
+        <h1 style={{ fontSize: '1.8rem', marginBottom: 15, fontWeight: 700 }}>Privacy Policy</h1>
+        <p style={{ color: '#9ca3af', marginBottom: 15, fontSize: '0.9rem' }}>Last updated: July 19, 2026</p>
+        
+        <p style={{ marginBottom: 15 }}>Welcome to <strong>Spam Hunter (InstaMod)</strong>. We value your privacy and are committed to protecting your personal data. This privacy policy explains how we collect, use, and process your information when you connect your Facebook / Instagram account to our service.</p>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>1. Information We Collect</h2>
+        <p style={{ marginBottom: 10 }}>When you authorize our application via Facebook Login, we access and store the following metadata:</p>
+        <ul style={{ paddingLeft: 20, marginBottom: 15, color: 'var(--text-color)' }}>
+          <li style={{ marginBottom: 5 }}>Your Instagram Business Account username and public profile info.</li>
+          <li style={{ marginBottom: 5 }}>Instagram posts, comments left on your posts, and basic commenter handles.</li>
+          <li style={{ marginBottom: 5 }}>Short-lived and long-lived access tokens required to retrieve comments and send DMs on your behalf.</li>
+        </ul>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>2. How We Use Your Information</h2>
+        <p style={{ marginBottom: 10 }}>We use the accessed details exclusively to provide comment moderation and auto-DM capabilities:</p>
+        <ul style={{ paddingLeft: 20, marginBottom: 15, color: 'var(--text-color)' }}>
+          <li style={{ marginBottom: 5 }}>To run sentiment analysis and filter out toxic or duplicate spam comments.</li>
+          <li style={{ marginBottom: 5 }}>To send automated direct messages containing user-configured templates when a lead keyword is detected.</li>
+        </ul>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>3. Data Storage & Security</h2>
+        <p style={{ marginBottom: 15 }}>We securely store access tokens and comment logs in a secure Postgres database. We do not sell, rent, or share your account credentials or user comments with any third parties.</p>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>4. Disconnection & Data Deletion</h2>
+        <p style={{ marginBottom: 15 }}>You can disconnect your account at any time. To request complete deletion of all records associated with your account, please refer to our <span style={{ color: '#6366f1', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setCurrentPath('/data-deletion')}>Data Deletion Instructions</span>.</p>
+      </div>
+    </div>
+  );
+}
+
+function TermsOfServicePage({ setCurrentPath, theme, toggleTheme }) {
+  return (
+    <div className="login-container" style={{ overflowY: 'auto', padding: '40px 20px', display: 'block', height: '100vh' }}>
+      <button 
+        className="theme-toggle-btn" 
+        style={{ position: 'fixed', top: 20, right: 20 }}
+        onClick={toggleTheme}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+      
+      <div className="glass-card" style={{ maxWidth: 700, margin: '0 auto', padding: 30, textAlign: 'left' }}>
+        <button className="btn-secondary" style={{ marginBottom: 20 }} onClick={() => { setCurrentPath('/'); }}>
+          ← Back to Login
+        </button>
+        <h1 style={{ fontSize: '1.8rem', marginBottom: 15, fontWeight: 700 }}>Terms of Service</h1>
+        <p style={{ color: '#9ca3af', marginBottom: 15, fontSize: '0.9rem' }}>Last updated: July 19, 2026</p>
+        
+        <p style={{ marginBottom: 15 }}>By connecting your Instagram and Facebook account to <strong>Spam Hunter (InstaMod)</strong>, you agree to comply with and be bound by the following terms and conditions of use.</p>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>1. Acceptable Use</h2>
+        <p style={{ marginBottom: 15 }}>You agree to use this service only for lawful purposes. You must comply with Instagram's and Meta's official Terms of Service and Developer Policies at all times. Any activity that violates Meta Platform Guidelines may result in termination of access to this application.</p>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>2. Account Access</h2>
+        <p style={{ marginBottom: 15 }}>You grant our application the permission to read your public Instagram comments, analyze sentiment, and send direct messages in response to those comments. You are responsible for configuring appropriate message templates that adhere to community guidelines.</p>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>3. Disclaimer of Warranties</h2>
+        <p style={{ marginBottom: 15 }}>This service is provided "as is" without warranty of any kind. We do not guarantee uninterrupted availability of the API or that the Meta API integrations will always remain functional due to platform policy updates.</p>
+      </div>
+    </div>
+  );
+}
+
+function DataDeletionPage({ setCurrentPath, theme, toggleTheme }) {
+  return (
+    <div className="login-container" style={{ overflowY: 'auto', padding: '40px 20px', display: 'block', height: '100vh' }}>
+      <button 
+        className="theme-toggle-btn" 
+        style={{ position: 'fixed', top: 20, right: 20 }}
+        onClick={toggleTheme}
+      >
+        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+      
+      <div className="glass-card" style={{ maxWidth: 700, margin: '0 auto', padding: 30, textAlign: 'left' }}>
+        <button className="btn-secondary" style={{ marginBottom: 20 }} onClick={() => { setCurrentPath('/'); }}>
+          ← Back to Login
+        </button>
+        <h1 style={{ fontSize: '1.8rem', marginBottom: 15, fontWeight: 700 }}>Data Deletion Instructions</h1>
+        <p style={{ color: '#9ca3af', marginBottom: 15, fontSize: '0.9rem' }}>Last updated: July 19, 2026</p>
+        
+        <p style={{ marginBottom: 15 }}>To comply with Meta Platform policies, we provide a clear method for users to request data deletion. If you want to delete your connected Instagram / Facebook account data from <strong>Spam Hunter (InstaMod)</strong>, you can do so easily by following the steps below:</p>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>Option 1: In-App Self Deletion</h2>
+        <ol style={{ paddingLeft: 20, marginBottom: 15, color: 'var(--text-color)' }}>
+          <li style={{ marginBottom: 5 }}>Log into your dashboard at <span style={{ color: '#6366f1' }}>spam-hunter-gauravyada.vercel.app</span>.</li>
+          <li style={{ marginBottom: 5 }}>Navigate to the <strong>Control Center</strong> or click your profile on the left sidebar.</li>
+          <li style={{ marginBottom: 5 }}>Click the <strong>Log Out</strong> button to disconnect your session.</li>
+          <li style={{ marginBottom: 5 }}>To completely purge your profile records from our databases, you can remove the app from your Facebook Settings (Option 2).</li>
+        </ol>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>Option 2: Disconnecting via Facebook (Standard Way)</h2>
+        <ol style={{ paddingLeft: 20, marginBottom: 15, color: 'var(--text-color)' }}>
+          <li style={{ marginBottom: 5 }}>Go to your Facebook profile's <strong>Settings & Privacy > Settings</strong>.</li>
+          <li style={{ marginBottom: 5 }}>Click on <strong>Apps and Websites</strong> in the left sidebar menu.</li>
+          <li style={{ marginBottom: 5 }}>Find <strong>Spam Hunter</strong> or <strong>InstaMod</strong> and click <strong>Remove</strong>.</li>
+          <li style={{ marginBottom: 5 }}>This action triggers a data deletion request to our servers, and all associated access tokens and database records for your profile will be automatically purged within 24 hours.</li>
+        </ol>
+        
+        <h2 style={{ fontSize: '1.2rem', margin: '20px 0 10px 0', fontWeight: 600 }}>Option 3: Manual Request</h2>
+        <p style={{ marginBottom: 15 }}>Alternatively, you can email us directly at <span style={{ color: '#6366f1' }}>support@algogrowthhub.com</span> with your Instagram handle. We will manually delete your connected data and send you a confirmation email within 48 hours.</p>
       </div>
     </div>
   );
