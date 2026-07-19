@@ -23,6 +23,18 @@
       "dest": "frontend/assets/$1"
     },
     {
+      "src": "/favicon.svg",
+      "dest": "frontend/favicon.svg"
+    },
+    {
+      "src": "/icons.svg",
+      "dest": "frontend/icons.svg"
+    },
+    {
+      "src": "/(privacy|privacy-policy|terms|terms-of-service|data-deletion|data_deletion)/?",
+      "dest": "frontend/index.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "frontend/$1"
     }

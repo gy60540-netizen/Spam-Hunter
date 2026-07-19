@@ -84,13 +84,13 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  if (currentPath === '/privacy') {
+  if (currentPath === '/privacy' || currentPath === '/privacy-policy' || currentPath === '/privacy/' || currentPath === '/privacy-policy/') {
     return <PrivacyPolicyPage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
   }
-  if (currentPath === '/terms') {
+  if (currentPath === '/terms' || currentPath === '/terms-of-service' || currentPath === '/terms/' || currentPath === '/terms-of-service/') {
     return <TermsOfServicePage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
   }
-  if (currentPath === '/data-deletion') {
+  if (currentPath === '/data-deletion' || currentPath === '/data_deletion' || currentPath === '/data-deletion/' || currentPath === '/data_deletion/' || currentPath === '/data-deletion-instructions') {
     return <DataDeletionPage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
   }
 
