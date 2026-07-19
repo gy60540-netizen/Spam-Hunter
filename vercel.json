@@ -31,7 +31,7 @@
       "dest": "frontend/icons.svg"
     },
     {
-      "src": "/(privacy|privacy-policy|terms|terms-of-service|data-deletion|data_deletion)/?",
+      "src": "/(privacy|privacy-policy|privacy_policy|terms|terms-of-service|terms_of_service|data-deletion|data_deletion)/?",
       "dest": "frontend/index.html"
     },
     {

@@ -84,10 +84,10 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  if (currentPath === '/privacy' || currentPath === '/privacy-policy' || currentPath === '/privacy/' || currentPath === '/privacy-policy/') {
+  if (currentPath === '/privacy' || currentPath === '/privacy-policy' || currentPath === '/privacy_policy' || currentPath === '/privacy/' || currentPath === '/privacy-policy/' || currentPath === '/privacy_policy/') {
     return <PrivacyPolicyPage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
   }
-  if (currentPath === '/terms' || currentPath === '/terms-of-service' || currentPath === '/terms/' || currentPath === '/terms-of-service/') {
+  if (currentPath === '/terms' || currentPath === '/terms-of-service' || currentPath === '/terms_of_service' || currentPath === '/terms/' || currentPath === '/terms-of-service/' || currentPath === '/terms_of_service/') {
     return <TermsOfServicePage setCurrentPath={navigateTo} theme={theme} toggleTheme={toggleTheme} />;
   }
   if (currentPath === '/data-deletion' || currentPath === '/data_deletion' || currentPath === '/data-deletion/' || currentPath === '/data_deletion/' || currentPath === '/data-deletion-instructions') {
