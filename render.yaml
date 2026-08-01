@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: spam-hunter-backend
+    runtime: python
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FRONTEND_URL
+        value: https://spam-hunter-gauravyada.vercel.app
+      - key: FB_APP_ID
+        value: "3920352508261064"
+      - key: FB_APP_SECRET
+        value: 84e4d0206d924c79b09406dc57dbc01a
