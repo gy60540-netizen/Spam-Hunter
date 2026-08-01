@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 function App() {
-  const { creator, error, login, loginWithFacebookCode, logout, metaConfig, loading: appLoading } = useApp();
+  const { creator, error, login, loginWithFacebookCode, logout, metaConfig, seedMockData, clearDemoData, refreshData, loading: appLoading } = useApp();
   const [usernameInput, setUsernameInput] = useState('');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [authLoading, setAuthLoading] = useState(false);
@@ -303,9 +303,12 @@ function DashboardLayout({ theme, toggleTheme }) {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn-secondary" onClick={seedMockData}>
-              <RotateCcw size={16} /> Seed Demo Data
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn-secondary" onClick={refreshData} title="Sync Real Instagram Comments">
+              <RotateCcw size={16} /> Sync Real Instagram
+            </button>
+            <button className="btn-secondary" onClick={clearDemoData} title="Clear Demo Sample Data" style={{ color: '#f43f5e' }}>
+              <Trash2 size={16} /> Clear Demo Data
             </button>
             <button className="btn-primary" onClick={() => setSimulatorOpen(true)}>
               <Play size={16} /> Open Comment Simulator

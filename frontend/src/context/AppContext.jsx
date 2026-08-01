@@ -316,6 +316,23 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const clearDemoData = async () => {
+    if (!creator) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/simulator/clear/${creator.id}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error('Clear failed');
+      await fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      setError('Failed to clear demo data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       creator,
@@ -338,11 +355,13 @@ export const AppProvider = ({ children }) => {
       toggleCreatorMode,
       triggerMockComment,
       seedMockData,
+      clearDemoData,
       fetchPostComments,  // Expose helper
       refreshData: fetchDashboardData
     }}>
       {children}
     </AppContext.Provider>
+  );
   );
 };
 

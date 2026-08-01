@@ -124,7 +124,123 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
+# --- META INSTAGRAM WEBHOOK ROUTES ---
+
+VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "spam_hunter_verify_token")
+
+@app.get("/api/webhooks/instagram")
+def verify_instagram_webhook(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token")
+):
+    """Meta Webhook Verification Endpoint."""
+    print(f"[Webhook GET] mode: {hub_mode}, verify_token: {hub_verify_token}")
+    if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
+        print("[Webhook GET] Verification Successful!")
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content=hub_challenge)
+    raise HTTPException(status_code=403, detail="Verification token mismatch")
+
+@app.post("/api/webhooks/instagram")
+async def handle_instagram_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Receives live comment events from Instagram Graph API Webhooks."""
+    try:
+        body = await request.json()
+        print(f"[Webhook POST] Event received: {json.dumps(body)}")
+        
+        entries = body.get("entry", [])
+        for entry in entries:
+            ig_user_id = entry.get("id")
+            changes = entry.get("changes", [])
+            for change in changes:
+                if change.get("field") == "comments":
+                    val = change.get("value", {})
+                    comment_id = val.get("id")
+                    text = val.get("text", "")
+                    from_user = val.get("from", {})
+                    username = from_user.get("username", "ig_user")
+                    media_obj = val.get("media", {})
+                    media_id = media_obj.get("id", "real_media")
+
+                    if not comment_id or not text:
+                        continue
+
+                    # Find creator connected to this ig_user_id
+                    creator = db.query(Creator).filter(Creator.ig_user_id == ig_user_id).first()
+                    if not creator:
+                        # Fallback to first non-mock creator
+                        creator = db.query(Creator).filter(Creator.is_mock == False).first()
+
+                    if not creator:
+                        print(f"[Webhook] No active creator found for ig_user_id {ig_user_id}")
+                        continue
+
+                    # Ensure media post exists
+                    post = db.query(MediaPost).filter(MediaPost.id == media_id).first()
+                    if not post:
+                        post = MediaPost(
+                            id=media_id,
+                            creator_id=creator.id,
+                            caption="Live Instagram Post",
+                            permalink=f"https://instagram.com/p/{media_id}",
+                            media_type="IMAGE"
+                        )
+                        db.add(post)
+                        db.commit()
+
+                    # Find or create commenter
+                    commenter = db.query(Commenter).filter(
+                        Commenter.username == username,
+                        Commenter.creator_id == creator.id
+                    ).first()
+
+                    if not commenter:
+                        commenter = Commenter(
+                            username=username,
+                            creator_id=creator.id,
+                            total_comments=0,
+                            last_commented_at=datetime.datetime.utcnow()
+                        )
+                        db.add(commenter)
+                        db.commit()
+                        db.refresh(commenter)
+
+                    # Classify comment
+                    lead_keywords_str = creator.lead_keywords or "price,buy,link,dm,how much,cost,details"
+                    category = classify_comment(db, username, media_id, text, lead_keywords_str)
+
+                    # Check duplicate comment
+                    existing_c = db.query(Comment).filter(Comment.id == comment_id).first()
+                    if not existing_c:
+                        new_comment = Comment(
+                            id=comment_id,
+                            media_id=media_id,
+                            username=username,
+                            text=text,
+                            timestamp=datetime.datetime.utcnow(),
+                            category=category
+                        )
+                        db.add(new_comment)
+                        db.commit()
+
+                        # Update stats
+                        commenter.last_commented_at = datetime.datetime.utcnow()
+                        update_commenter_stats(db, commenter)
+
+                        # Auto-enqueue DM if not hate comment and risk <= 30
+                        if category != "Hate Comment" and commenter.risk_score <= 30:
+                            print(f"[Webhook] Auto-enqueuing DM for comment {comment_id} by @{username}")
+                            enqueue_dm(db, creator.id, username, comment_id)
+                            background_tasks.add_task(process_creator_pending_dms, creator.id)
+
+        return {"status": "EVENT_RECEIVED"}
+    except Exception as e:
+        print(f"[Webhook Error] {e}")
+        return {"status": "ERROR", "detail": str(e)}
+
 # --- AUTH ROUTES ---
+
 
 
 @app.get("/api/auth/config")
@@ -750,6 +866,25 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
         update_commenter_stats(db, commenter)
 
     return {"status": "success", "message": f"Successfully seeded mock data for creator {creator_id}"}
+
+@app.delete("/api/simulator/clear/{creator_id}")
+def clear_mock_data(creator_id: int, db: Session = Depends(get_db)):
+    """Clears all mock/seed data for a creator and keeps real Instagram comments."""
+    creator = db.query(Creator).filter(Creator.id == creator_id).first()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    post_ids = [p.id for p in db.query(MediaPost).filter(MediaPost.creator_id == creator_id).all()]
+    if post_ids:
+        db.query(Comment).filter(Comment.media_id.in_(post_ids)).delete(synchronize_session=False)
+        db.query(Like).filter(Like.media_id.in_(post_ids)).delete(synchronize_session=False)
+
+    db.query(Commenter).filter(Commenter.creator_id == creator_id).delete(synchronize_session=False)
+    db.query(DMQueueItem).filter(DMQueueItem.creator_id == creator_id).delete(synchronize_session=False)
+    db.commit()
+
+    return {"status": "success", "message": f"Successfully cleared mock data for creator {creator_id}"}
+
 
 
 sync_lock = threading.Lock()
