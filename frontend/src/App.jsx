@@ -67,9 +67,9 @@ function App() {
   }, [loginWithFacebookCode]);
 
   const handleFacebookLogin = () => {
-    if (!metaConfig || !metaConfig.app_id) return;
+    const appId = (metaConfig && metaConfig.app_id) ? metaConfig.app_id : "3920352508261064";
     const redirectUri = encodeURIComponent(window.location.origin + '/');
-    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${metaConfig.app_id}&redirect_uri=${redirectUri}&scope=instagram_manage_comments,pages_show_list,instagram_basic,instagram_manage_messages,pages_read_engagement,business_management`;
+    const authUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=instagram_manage_comments,pages_show_list,instagram_basic,instagram_manage_messages,pages_read_engagement,business_management`;
     window.location.href = authUrl;
   };
 
@@ -161,37 +161,36 @@ function App() {
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); if (usernameInput.trim()) login(usernameInput); }} style={{ marginBottom: 20 }}>
-            <div className="form-group">
+            <div className="form-group" style={{ gap: '10px' }}>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Enter Instagram Username to Access Dashboard
+                Enter Instagram Username
               </label>
               <div className="input-with-icon-hero">
                 <span className="input-prefix" style={{ color: '#6366f1', fontWeight: 700, fontSize: '1.1rem' }}>@</span>
                 <input 
                   type="text" 
-                  placeholder="e.g. algowinnerr or your_name" 
+                  placeholder="e.g. algowinnerr" 
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
                   required 
                   autoFocus
                 />
-                <button type="submit" className="btn-primary-sm" style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '0.88rem' }}>
-                  Enter <Sparkles size={14} />
-                </button>
               </div>
+              <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '6px', borderRadius: '12px' }}>
+                Access Dashboard <Sparkles size={16} />
+              </button>
             </div>
           </form>
           
           <div className="divider-row">
-            <span>OR CONNECT INSTAGRAM BUSINESS ACCOUNT</span>
+            <span>OR CONNECT INSTAGRAM BUSINESS</span>
           </div>
           
           <button 
             className="btn-facebook-hero" 
             onClick={handleFacebookLogin}
-            disabled={!metaConfig}
           >
-            <Globe size={18} /> Connect Official Meta / Facebook Page
+            <Globe size={18} /> Connect Meta / Facebook Page
           </button>
           
           <div className="feature-highlights">
@@ -207,12 +206,12 @@ function App() {
           </div>
         </div>
 
-        <div className="login-legal-footer" style={{ marginTop: 25, display: 'flex', gap: 20, justifyContent: 'center', fontSize: '0.82rem', color: 'var(--text-muted)', zIndex: 10 }}>
-          <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => navigateTo('/privacy')}>Privacy Policy</span>
+        <div className="login-legal-footer" style={{ marginTop: 25, display: 'flex', gap: 15, flexWrap: 'wrap', justifyContent: 'center', fontSize: '0.82rem', color: 'var(--text-muted)', zIndex: 10 }}>
+          <span style={{ cursor: 'pointer' }} onClick={() => navigateTo('/privacy')}>Privacy Policy</span>
           <span>•</span>
-          <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => navigateTo('/terms')}>Terms of Service</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => navigateTo('/terms')}>Terms of Service</span>
           <span>•</span>
-          <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => navigateTo('/data-deletion')}>Data Deletion</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => navigateTo('/data-deletion')}>Data Deletion</span>
         </div>
       </div>
     );
