@@ -117,8 +117,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {
+        "status": "online",
+        "service": "Instagram Spam Moderator & Intelligence API",
+        "version": "1.1.0",
+        "docs_url": "/docs"
+    }
+
+@app.get("/healthz")
+def health_check():
+    return {"status": "healthy"}
 
 # --- AUTH ROUTES ---
+
 
 @app.get("/api/auth/config")
 def get_auth_config():
