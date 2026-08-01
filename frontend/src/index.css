@@ -233,52 +233,156 @@ body {
 /* --- LOGIN SCREEN STYLING --- */
 .login-container {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: 20px;
+  position: relative;
   background-image: 
-    radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), transparent 60%);
+    radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.22), transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.15), transparent 50%);
 }
 
-.login-card {
+.login-card-hero {
   width: 100%;
-  max-width: 420px;
-  padding: 40px 30px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 460px;
+  padding: 42px 36px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.15);
+  animation: fadeInHero 0.5s ease-out;
 }
 
-.login-header {
-  text-align: center;
-  margin-bottom: 30px;
+@keyframes fadeInHero {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.logo-icon {
-  width: 54px;
-  height: 54px;
-  border-radius: var(--radius-sm);
-  background: rgba(99, 102, 241, 0.15);
+.logo-icon-glow {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 15px auto;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  margin: 0 auto 16px auto;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 25px rgba(99, 102, 241, 0.3);
 }
 
-.login-header h1 {
-  font-size: 1.8rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 5px;
-  background: linear-gradient(135deg, #fff, #a3a3a3);
+.brand-title {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #ffffff, #a5b4fc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.login-header p {
+.brand-subtitle {
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
+
+.input-with-icon-hero {
+  display: flex;
+  align-items: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 6px 6px 6px 16px;
+  transition: all 0.25s ease;
+  margin-top: 8px;
+}
+
+.input-with-icon-hero:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.input-with-icon-hero input {
+  background: transparent;
+  border: none;
+  color: white;
+  padding: 10px 8px;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 500;
+  outline: none;
+}
+
+.divider-row {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 22px 0 16px 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.divider-row::before, .divider-row::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-glass);
+}
+.divider-row span {
+  padding: 0 10px;
+}
+
+.btn-facebook-hero {
+  width: 100%;
+  padding: 13px 20px;
+  background: #1877F2;
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 4px 15px rgba(24, 119, 242, 0.3);
+  transition: all 0.25s ease;
+}
+
+.btn-facebook-hero:hover:not(:disabled) {
+  background: #166fe5;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(24, 119, 242, 0.4);
+}
+
+.feature-highlights {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-glass);
+}
+
+.highlight-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 
 .form-group {
   margin-bottom: 20px;

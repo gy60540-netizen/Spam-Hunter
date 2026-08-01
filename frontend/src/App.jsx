@@ -145,74 +145,74 @@ function App() {
       <div className="login-container">
         <button 
           className="theme-toggle-btn" 
-          style={{ position: 'absolute', top: 20, right: 20 }}
+          style={{ position: 'absolute', top: 25, right: 25, zIndex: 100 }}
           onClick={toggleTheme}
+          title="Toggle Theme"
         >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
-        <div className="glass-card login-card">
+        <div className="glass-card login-card-hero">
           <div className="login-header">
-            <div className="logo-icon">
-              <ShieldAlert size={28} color="#6366f1" />
+            <div className="logo-icon-glow">
+              <ShieldAlert size={32} color="#6366f1" />
             </div>
-            <h1>InstaModerator</h1>
-            <p>Intelligence & Spam Protection Platform</p>
+            <h1 className="brand-title">SpamHunter Pro</h1>
+            <p className="brand-subtitle">AI-Powered Instagram Spam Protection & Auto-DM Platform</p>
+          </div>
+
+          <form onSubmit={(e) => { e.preventDefault(); if (usernameInput.trim()) login(usernameInput); }} style={{ marginBottom: 20 }}>
+            <div className="form-group">
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Enter Instagram Username to Access Dashboard
+              </label>
+              <div className="input-with-icon-hero">
+                <span className="input-prefix" style={{ color: '#6366f1', fontWeight: 700, fontSize: '1.1rem' }}>@</span>
+                <input 
+                  type="text" 
+                  placeholder="e.g. algowinnerr or your_name" 
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  required 
+                  autoFocus
+                />
+                <button type="submit" className="btn-primary-sm" style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '0.88rem' }}>
+                  Enter <Sparkles size={14} />
+                </button>
+              </div>
+            </div>
+          </form>
+          
+          <div className="divider-row">
+            <span>OR CONNECT INSTAGRAM BUSINESS ACCOUNT</span>
           </div>
           
           <button 
-            className="btn-primary" 
-            style={{ width: '100%', justifyContent: 'center', marginBottom: 15, background: '#1877F2', border: 'none', padding: '12px 20px' }}
+            className="btn-facebook-hero" 
             onClick={handleFacebookLogin}
             disabled={!metaConfig}
           >
-            <Globe size={18} style={{ marginRight: 8 }} /> Continue with Facebook
+            <Globe size={18} /> Connect Official Meta / Facebook Page
           </button>
           
-          <div style={{ textAlign: 'center', margin: '15px 0' }}>
-            <span style={{ fontSize: '0.85rem', color: '#9ca3af' }}>OR</span>
-          </div>
-
-          {!sandboxMode ? (
-            <button 
-              className="btn-secondary" 
-              style={{ width: '100%', justifyContent: 'center' }}
-              onClick={() => setSandboxMode(true)}
-            >
-              Enter Sandbox Testing Mode
-            </button>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); login(usernameInput); }}>
-              <div className="form-group">
-                <label>Sandbox Instagram Username</label>
-                <div className="input-with-icon">
-                  <span className="input-prefix">@</span>
-                  <input 
-                    type="text" 
-                    placeholder="yourname" 
-                    value={usernameInput}
-                    onChange={(e) => setUsernameInput(e.target.value)}
-                    required 
-                  />
-                </div>
-              </div>
-              <button type="submit" className="btn-secondary" style={{ width: '100%', justifyContent: 'center', marginTop: 10 }}>
-                Connect Sandbox <Sparkles size={16} />
-              </button>
-            </form>
-          )}
-
-          <div className="login-footer">
-            <Info size={14} style={{ marginRight: 6 }} />
-            <span>Connects to Meta API or Sandbox for safety.</span>
+          <div className="feature-highlights">
+            <div className="highlight-item">
+              <Sparkles size={14} color="#6366f1" /> <span>Instant Auto-DM</span>
+            </div>
+            <div className="highlight-item">
+              <ShieldAlert size={14} color="#10b981" /> <span>AI Anti-Spam</span>
+            </div>
+            <div className="highlight-item">
+              <Users size={14} color="#a855f7" /> <span>Fan Intelligence</span>
+            </div>
           </div>
         </div>
 
-        <div className="login-legal-footer" style={{ marginTop: 20, display: 'flex', gap: 15, justifyContent: 'center', fontSize: '0.8rem', color: '#9ca3af', zIndex: 10 }}>
-          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateTo('/privacy')}>Privacy Policy</span>
+        <div className="login-legal-footer" style={{ marginTop: 25, display: 'flex', gap: 20, justifyContent: 'center', fontSize: '0.82rem', color: 'var(--text-muted)', zIndex: 10 }}>
+          <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => navigateTo('/privacy')}>Privacy Policy</span>
           <span>•</span>
-          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateTo('/terms')}>Terms of Service</span>
+          <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => navigateTo('/terms')}>Terms of Service</span>
           <span>•</span>
-          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigateTo('/data-deletion')}>Data Deletion</span>
+          <span style={{ cursor: 'pointer', transition: 'color 0.2s' }} onClick={() => navigateTo('/data-deletion')}>Data Deletion</span>
         </div>
       </div>
     );
