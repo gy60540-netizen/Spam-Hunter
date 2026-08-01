@@ -123,11 +123,11 @@ async def run_dm_queue_worker():
                 # Simulate API Call delay
                 await asyncio.sleep(1.5)
 
-                if creator.is_mock:
-                    # Simulation Mode: success
+                if creator.is_mock or item.comment_id.startswith("c_") or item.comment_id.startswith("seed_"):
+                    # Simulation Mode or UI Simulator Test: success
                     item.status = "SENT"
                     item.sent_at = datetime.datetime.utcnow()
-                    print(f"[Worker] DM sent to @{item.recipient_username} successfully (MOCK).")
+                    print(f"[Worker] DM sent to @{item.recipient_username} successfully (SIMULATED).")
                 else:
                     # Real mode: Integrate real Instagram Graph API Call
                     if not creator.access_token:
@@ -149,15 +149,15 @@ async def run_dm_queue_worker():
                                     "text": item.message_text
                                 }
                             }
-                        res = requests.post(url, json=payload)
-                        if res.status_code == 200:
-                            item.status = "SENT"
-                            item.sent_at = datetime.datetime.utcnow()
-                            print(f"[Worker] DM sent to @{item.recipient_username} successfully.")
-                        else:
-                            item.status = "FAILED"
-                            item.error_message = res.text
-                            print(f"[Worker] DM to @{item.recipient_username} failed: {res.text}")
+                            res = requests.post(url, json=payload)
+                            if res.status_code == 200:
+                                item.status = "SENT"
+                                item.sent_at = datetime.datetime.utcnow()
+                                print(f"[Worker] DM sent to @{item.recipient_username} successfully.")
+                            else:
+                                item.status = "FAILED"
+                                item.error_message = res.text
+                                print(f"[Worker] DM to @{item.recipient_username} failed: {res.text}")
                 
                 db.commit()
 
@@ -202,10 +202,10 @@ async def process_creator_pending_dms(creator_id: int):
 
             print(f"[Worker] Processing DM to @{item.recipient_username}: '{item.message_text[:30]}...'")
 
-            if creator.is_mock:
+            if creator.is_mock or item.comment_id.startswith("c_") or item.comment_id.startswith("seed_"):
                 item.status = "SENT"
                 item.sent_at = datetime.datetime.utcnow()
-                print(f"[Worker] DM sent to @{item.recipient_username} successfully (MOCK).")
+                print(f"[Worker] DM sent to @{item.recipient_username} successfully (SIMULATED).")
             else:
                 if not creator.access_token:
                     item.status = "FAILED"
