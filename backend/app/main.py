@@ -869,7 +869,7 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/api/simulator/clear/{creator_id}")
 def clear_mock_data(creator_id: int, db: Session = Depends(get_db)):
-    """Clears all mock/seed data for a creator and keeps real Instagram comments."""
+    """Clears all mock/seed data and posts for a creator."""
     creator = db.query(Creator).filter(Creator.id == creator_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
@@ -879,6 +879,7 @@ def clear_mock_data(creator_id: int, db: Session = Depends(get_db)):
         db.query(Comment).filter(Comment.media_id.in_(post_ids)).delete(synchronize_session=False)
         db.query(Like).filter(Like.media_id.in_(post_ids)).delete(synchronize_session=False)
 
+    db.query(MediaPost).filter(MediaPost.creator_id == creator_id).delete(synchronize_session=False)
     db.query(Commenter).filter(Commenter.creator_id == creator_id).delete(synchronize_session=False)
     db.query(DMQueueItem).filter(DMQueueItem.creator_id == creator_id).delete(synchronize_session=False)
     db.commit()
