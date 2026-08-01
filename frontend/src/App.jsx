@@ -876,11 +876,15 @@ function CommentersTab() {
 function QueueTab() {
   const { queue } = useApp();
 
-  const getStatusBadge = (status) => {
-    switch (status) {
+  const getStatusBadge = (item) => {
+    switch (item.status) {
       case 'PENDING': return <span className="badge badge-pending">PENDING</span>;
       case 'SENT': return <span className="badge badge-normal">SENT</span>;
-      default: return <span className="badge badge-hate">FAILED</span>;
+      default: return (
+        <span className="badge badge-hate" title={item.error_message || "Meta API error or Dev mode limitation"} style={{ cursor: 'help' }}>
+          FAILED ℹ️
+        </span>
+      );
     }
   };
 
@@ -913,7 +917,14 @@ function QueueTab() {
                   <td style={{ fontSize: '0.875rem', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {item.message_text}
                   </td>
-                  <td>{getStatusBadge(item.status)}</td>
+                  <td>
+                    {getStatusBadge(item)}
+                    {item.status === 'FAILED' && item.error_message && (
+                      <div style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '2px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.error_message}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
                     {new Date(item.scheduled_for).toLocaleTimeString()}
                   </td>
