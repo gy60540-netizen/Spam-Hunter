@@ -31,62 +31,56 @@ from .schemas import (
 from .classification import classify_comment, update_commenter_stats
 from .queue_worker import run_dm_queue_worker, enqueue_dm, process_creator_pending_dms
 
-# Initialize DB Tables on startup
-Base.metadata.create_all(bind=engine)
-
 def migrate_database():
     from sqlalchemy import text
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("SELECT razorpay_customer_id FROM creators LIMIT 1"))
-            has_customer_id = True
-        except Exception:
-            has_customer_id = False
-
-        try:
-            conn.execute(text("SELECT razorpay_subscription_id FROM creators LIMIT 1"))
-            has_subscription_id = True
-        except Exception:
-            has_subscription_id = False
-
-    if not has_customer_id or not has_subscription_id:
-        with engine.begin() as conn:
-            if not has_customer_id:
-                try:
-                    conn.execute(text("ALTER TABLE creators ADD COLUMN razorpay_customer_id TEXT"))
-                    print("[Migration] Added column razorpay_customer_id to creators table")
-                except Exception as e:
-                    print(f"[Migration Error razorpay_customer_id] {str(e)}")
-            if not has_subscription_id:
-                try:
-                    conn.execute(text("ALTER TABLE creators ADD COLUMN razorpay_subscription_id TEXT"))
-                    print("[Migration] Added column razorpay_subscription_id to creators table")
-                except Exception as e:
-                    print(f"[Migration Error razorpay_subscription_id] {str(e)}")
-
-    # Add Meta fields if they don't exist (running outside the razorpay if-block)
-    meta_fields = ["fb_page_id", "fb_page_access_token", "ig_user_id", "long_lived_token"]
-    with engine.begin() as conn:
-        for field in meta_fields:
-            try:
-                conn.execute(text(f"SELECT {field} FROM creators LIMIT 1"))
-            except Exception:
-                try:
-                    conn.execute(text(f"ALTER TABLE creators ADD COLUMN {field} TEXT"))
-                    print(f"[Migration] Added column {field} to creators table")
-                except Exception as e:
-                    print(f"[Migration Error {field}] {str(e)}")
-
-    # Force activate all existing creators
     try:
-        with engine.begin() as conn:
-            conn.execute(text("UPDATE creators SET subscription_status = 'active'"))
-            print("[Migration] Force activated all creators to 'active'")
-    except Exception as e:
-        print(f"[Migration Error Activate] {str(e)}")
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("SELECT razorpay_customer_id FROM creators LIMIT 1"))
+                has_customer_id = True
+            except Exception:
+                has_customer_id = False
 
-# Run database migrations
-migrate_database()
+            try:
+                conn.execute(text("SELECT razorpay_subscription_id FROM creators LIMIT 1"))
+                has_subscription_id = True
+            except Exception:
+                has_subscription_id = False
+
+        if not has_customer_id or not has_subscription_id:
+            with engine.begin() as conn:
+                if not has_customer_id:
+                    try:
+                        conn.execute(text("ALTER TABLE creators ADD COLUMN razorpay_customer_id TEXT"))
+                    except Exception as e:
+                        print(f"[Migration Error razorpay_customer_id] {str(e)}")
+                if not has_subscription_id:
+                    try:
+                        conn.execute(text("ALTER TABLE creators ADD COLUMN razorpay_subscription_id TEXT"))
+                    except Exception as e:
+                        print(f"[Migration Error razorpay_subscription_id] {str(e)}")
+
+        meta_fields = ["fb_page_id", "fb_page_access_token", "ig_user_id", "long_lived_token"]
+        with engine.begin() as conn:
+            for field in meta_fields:
+                try:
+                    conn.execute(text(f"SELECT {field} FROM creators LIMIT 1"))
+                except Exception:
+                    try:
+                        conn.execute(text(f"ALTER TABLE creators ADD COLUMN {field} TEXT"))
+                    except Exception as e:
+                        print(f"[Migration Error {field}] {str(e)}")
+    except Exception as e:
+        print(f"[Migration Warning] {e}")
+
+# Initialize DB Tables on startup safely
+try:
+    Base.metadata.create_all(bind=engine)
+    migrate_database()
+except Exception as e:
+    print(f"[Database Startup Warning] {e}")
+
+
 
 
 

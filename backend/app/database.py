@@ -7,11 +7,15 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or os.getenv("STORAGE_URL")
 
+if DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.strip('\'" ')
+
 if not DATABASE_URL:
     if "/var/task" in os.path.abspath(__file__) or os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None:
         DATABASE_URL = "sqlite:////tmp/instagram_spam_moderator.db"
     else:
         DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
+
 
 # Format postgresql scheme and parameters for SQLAlchemy compatibility
 if DATABASE_URL.startswith("postgres://"):
