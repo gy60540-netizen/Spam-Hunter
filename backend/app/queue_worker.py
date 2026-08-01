@@ -32,11 +32,9 @@ def enqueue_dm(db: Session, creator_id: int, recipient_username: str, comment_id
     if not creator:
         return None
 
-    # Fetch comment category to determine which template bank to use
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     category = comment.category if comment else "Normal"
 
-    # 1. Retrieve templates or fallback based on category
     if category == "Lead":
         try:
             templates = json.loads(creator.lead_dm_templates) if creator.lead_dm_templates else DEFAULT_LEAD_TEMPLATES
@@ -52,32 +50,22 @@ def enqueue_dm(db: Session, creator_id: int, recipient_username: str, comment_id
         except Exception:
             templates = DEFAULT_TEMPLATES
 
-    # 2. Select a template randomly to prevent patterns
     message_template = random.choice(templates)
-
-    # 3. Replace personalized variables
     message_text = message_template.replace("{username}", recipient_username)
 
-    # 4. Smart Scheduling / Delay spacing
     now = datetime.datetime.utcnow()
-    
-    # Check if there is already a DM scheduled in the future for this creator
     latest_item = db.query(DMQueueItem).filter(
         DMQueueItem.creator_id == creator_id,
         DMQueueItem.status == "PENDING"
     ).order_by(DMQueueItem.scheduled_for.desc()).first()
 
-    # Calculate random delay (jitter): 3 to 5 seconds
     delay_seconds = random.randint(3, 5)
 
     if latest_item and latest_item.scheduled_for > now:
-        # Schedule it after the latest item with additional random delay
         scheduled_for = latest_item.scheduled_for + datetime.timedelta(seconds=delay_seconds)
     else:
-        # Schedule it starting from now + random delay
         scheduled_for = now + datetime.timedelta(seconds=delay_seconds)
 
-    # 5. Create queue item
     new_item = DMQueueItem(
         creator_id=creator_id,
         recipient_username=recipient_username,
@@ -92,36 +80,6 @@ def enqueue_dm(db: Session, creator_id: int, recipient_username: str, comment_id
     
     return new_item
 
-async def run_dm_queue_worker():
-    """
-    Background worker loop that runs continuously.
-    It checks the queue for pending items that are ready to be sent.
-    """
-    print("DM Queue Worker Started...")
-    while True:
-        try:
-            # Create a new DB session for this iteration
-            db = SessionLocal()
-            now = datetime.datetime.utcnow()
-
-            # Find all pending queue items whose scheduled time has passed
-            pending_items = db.query(DMQueueItem).filter(
-                DMQueueItem.status == "PENDING",
-                DMQueueItem.scheduled_for <= now
-            ).order_by(DMQueueItem.scheduled_for.asc()).all()
-
-            for item in pending_items:
-                creator = db.query(Creator).filter(Creator.id == item.creator_id).first()
-                if not creator:
-                    item.status = "FAILED"
-                    item.error_message = "Creator not found"
-                    db.commit()
-                    continue
-
-                print(f"[Worker] Processing DM to @{item.recipient_username}: '{item.message_text[:30]}...'")
-
-                # Simulate API Call delay
-                await asyncio.sleep(1.5)
 
 def send_meta_dm(creator, comment_id: str, message_text: str):
     """Attempts sending Instagram Private Reply DM across Graph API endpoint variations."""
@@ -157,15 +115,20 @@ def send_meta_dm(creator, comment_id: str, message_text: str):
 
 
 async def run_dm_queue_worker():
-    """Continuous background loop processing queued DMs safely."""
+    """
+    Background worker loop that runs continuously.
+    It checks the queue for pending items that are ready to be sent.
+    """
+    print("DM Queue Worker Started...")
     while True:
         try:
             db = SessionLocal()
             now = datetime.datetime.utcnow()
+
             pending_items = db.query(DMQueueItem).filter(
                 DMQueueItem.status == "PENDING",
                 DMQueueItem.scheduled_for <= now
-            ).order_by(DMQueueItem.scheduled_for.asc()).limit(10).all()
+            ).order_by(DMQueueItem.scheduled_for.asc()).all()
 
             for item in pending_items:
                 creator = db.query(Creator).filter(Creator.id == item.creator_id).first()
