@@ -13,9 +13,15 @@ if not DATABASE_URL:
     else:
         DATABASE_URL = "sqlite:///./instagram_spam_moderator.db"
 
-# Format postgresql scheme for SQLAlchemy compatibility
+# Format postgresql scheme and parameters for SQLAlchemy compatibility
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+if "?pgbouncer=true" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("?pgbouncer=true", "")
+if "&pgbouncer=true" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("&pgbouncer=true", "")
+
 
 # Create Database Engine
 connect_args = {}
