@@ -65,6 +65,14 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     if (creator) {
       fetchDashboardData();
+
+      // Fast auto-polling every 3 seconds for instant real-time UI updates
+      const interval = setInterval(() => {
+        fetchStats();
+        fetchQueue();
+      }, 3000);
+
+      return () => clearInterval(interval);
     } else {
       setPosts([]);
       setCommenters([]);
