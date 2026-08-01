@@ -16,7 +16,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "https://spam-hunter-backend.onrender.com/api/$1"
+      "dest": "https://spam-hunter.onrender.com/api/$1"
     },
     {
       "src": "/assets/(.*)",
