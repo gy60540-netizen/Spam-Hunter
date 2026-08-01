@@ -228,8 +228,9 @@ async def handle_instagram_webhook(request: Request, background_tasks: Backgroun
                         commenter.last_commented_at = datetime.datetime.utcnow()
                         update_commenter_stats(db, commenter)
 
-                        # Auto-enqueue DM if not hate comment and risk <= 30
-                        if category != "Hate Comment" and commenter.risk_score <= 30:
+                        # Auto-enqueue DM if not hate comment
+                        risk_val = commenter.risk_score if (commenter and commenter.risk_score is not None) else 0
+                        if category != "Hate Comment" and risk_val <= 50:
                             print(f"[Webhook] Auto-enqueuing DM for comment {comment_id} by @{username}")
                             enqueue_dm(db, creator.id, username, comment_id)
                             background_tasks.add_task(process_creator_pending_dms, creator.id)
@@ -713,8 +714,9 @@ def simulate_new_comment(payload: CommentCreateMock, background_tasks: Backgroun
     commenter.last_commented_at = datetime.datetime.utcnow()
     update_commenter_stats(db, commenter)
 
-    # Auto-DM logic for all comments except Hate Comments and toxic commenters (risk_score > 30)
-    if category != "Hate Comment" and commenter.risk_score <= 30:
+    # Auto-DM logic for all comments except Hate Comments
+    risk_val = commenter.risk_score if (commenter and commenter.risk_score is not None) else 0
+    if category != "Hate Comment" and risk_val <= 50:
         enqueue_dm(db, post.creator_id, username, comment_id)
         background_tasks.add_task(process_creator_pending_dms, post.creator_id)
 
