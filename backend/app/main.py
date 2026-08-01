@@ -739,32 +739,37 @@ def simulate_new_like(payload: LikeCreateMock, db: Session = Depends(get_db)):
     db.add(new_like)
     db.commit()
     db.refresh(new_like)
-    
     return new_like
 
 @app.post("/api/simulator/seed/{creator_id}")
 def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
-    """Seeds a rich set of spammers, hater comments, leads, and normal comments."""
+    """Seeds a rich set of spammers, hater comments, leads, and normal comments in bulk."""
     creator = db.query(Creator).filter(Creator.id == creator_id).first()
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
-    post_ids = [p.id for p in db.query(MediaPost).filter(MediaPost.creator_id == creator_id).all()]
-    db.query(Comment).filter(Comment.media_id.in_(post_ids)).delete(synchronize_session=False)
-    db.query(Like).filter(Like.media_id.in_(post_ids)).delete(synchronize_session=False)
+    old_post_ids = [p.id for p in db.query(MediaPost).filter(MediaPost.creator_id == creator_id).all()]
+    if old_post_ids:
+        db.query(Comment).filter(Comment.media_id.in_(old_post_ids)).delete(synchronize_session=False)
+        db.query(Like).filter(Like.media_id.in_(old_post_ids)).delete(synchronize_session=False)
+
+    db.query(MediaPost).filter(MediaPost.creator_id == creator_id).delete(synchronize_session=False)
     db.query(Commenter).filter(Commenter.creator_id == creator_id).delete(synchronize_session=False)
     db.query(DMQueueItem).filter(DMQueueItem.creator_id == creator_id).delete(synchronize_session=False)
     db.commit()
 
     seed_creator_posts(db, creator_id)
+    post_ids = [p.id for p in db.query(MediaPost).filter(MediaPost.creator_id == creator_id).all()]
+    if not post_ids:
+        post_ids = [f"post_1_{creator_id}", f"post_2_{creator_id}", f"post_3_{creator_id}"]
 
     commenters_data = [
-        {"username": "loyal_fan_sneha", "normal": 10, "hate": 0, "emoji": 1, "dup": 0, "flood": 0, "lead": 0},
-        {"username": "travel_freak_rohit", "normal": 6, "hate": 0, "emoji": 2, "dup": 0, "flood": 0, "lead": 0},
-        {"username": "bot_promoter_99", "normal": 0, "hate": 0, "emoji": 0, "dup": 8, "flood": 3, "lead": 0},
-        {"username": "angry_keyboard_warrior", "normal": 1, "hate": 4, "emoji": 0, "dup": 0, "flood": 0, "lead": 0},
-        {"username": "emoji_spammer_girl", "normal": 2, "hate": 0, "emoji": 6, "dup": 0, "flood": 1, "lead": 0},
-        {"username": "genuine_customer_rahul", "normal": 1, "hate": 0, "emoji": 0, "dup": 0, "flood": 0, "lead": 3}
+        {"username": "loyal_fan_sneha", "normal": 6, "hate": 0, "emoji": 1, "dup": 0, "flood": 0, "lead": 0},
+        {"username": "travel_freak_rohit", "normal": 4, "hate": 0, "emoji": 2, "dup": 0, "flood": 0, "lead": 0},
+        {"username": "bot_promoter_99", "normal": 0, "hate": 0, "emoji": 0, "dup": 4, "flood": 2, "lead": 0},
+        {"username": "angry_keyboard_warrior", "normal": 1, "hate": 3, "emoji": 0, "dup": 0, "flood": 0, "lead": 0},
+        {"username": "emoji_spammer_girl", "normal": 1, "hate": 0, "emoji": 4, "dup": 0, "flood": 1, "lead": 0},
+        {"username": "genuine_customer_rahul", "normal": 1, "hate": 0, "emoji": 0, "dup": 0, "flood": 0, "lead": 2}
     ]
 
     base_time = datetime.datetime.utcnow() - datetime.timedelta(days=1)
@@ -778,95 +783,87 @@ def seed_mock_data(creator_id: int, db: Session = Depends(get_db)):
             last_commented_at=datetime.datetime.utcnow()
         )
         db.add(commenter)
-        db.commit()
-        db.refresh(commenter)
+        db.flush()
 
         # 1. Normal comments
         for i in range(cdata["normal"]):
-            text = f"Love this content! Keep going post #{i+1} ❤️"
             media_id = random.choice(post_ids)
-            c = Comment(
+            db.add(Comment(
                 id=f"seed_c_norm_{uname}_{i}",
                 media_id=media_id,
                 username=uname,
-                text=text,
+                text=f"Love this content! Keep going post #{i+1} ❤️",
                 timestamp=base_time + datetime.timedelta(hours=i),
                 category="Normal"
-            )
-            db.add(c)
-            l = Like(
+            ))
+            db.add(Like(
                 media_id=media_id,
                 username=uname,
                 timestamp=base_time + datetime.timedelta(hours=i, minutes=1)
-            )
-            db.add(l)
+            ))
         
         # 2. Hate Comments
         for i in range(cdata["hate"]):
-            text = ["Worst video ever, delete this account", "This is stupid post, waste of time!", "Idiot creator, zero knowledge", "Bakwas content, unfollowed"][i % 4]
-            c = Comment(
+            text = ["Worst video ever, delete this account", "This is stupid post, waste of time!", "Idiot creator, zero knowledge"][i % 3]
+            db.add(Comment(
                 id=f"seed_c_hate_{uname}_{i}",
                 media_id=f"post_1_{creator_id}",
                 username=uname,
                 text=text,
                 timestamp=base_time + datetime.timedelta(hours=12 + i),
                 category="Hate Comment"
-            )
-            db.add(c)
+            ))
 
         # 3. Emoji Spam
         for i in range(cdata["emoji"]):
             text = "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥" if i % 2 == 0 else "😂😂😂😂😂😂😂😂😂😂😂"
-            c = Comment(
+            db.add(Comment(
                 id=f"seed_c_emoji_{uname}_{i}",
                 media_id=f"post_3_{creator_id}",
                 username=uname,
                 text=text,
                 timestamp=base_time + datetime.timedelta(minutes=10 * i),
                 category="Emoji Spam"
-            )
-            db.add(c)
+            ))
 
         # 4. Duplicate Spam
         for i in range(cdata["dup"]):
-            c = Comment(
+            db.add(Comment(
                 id=f"seed_c_dup_{uname}_{i}",
                 media_id=f"post_1_{creator_id}",
                 username=uname,
                 text="Follow me for free giveaways! 🎁🔥",
                 timestamp=base_time + datetime.timedelta(minutes=5 * i),
                 category="Duplicate Spam"
-            )
-            db.add(c)
+            ))
 
         # 5. Flood Spam
         for i in range(cdata["flood"]):
-            c = Comment(
+            db.add(Comment(
                 id=f"seed_c_flood_{uname}_{i}",
                 media_id=f"post_2_{creator_id}",
                 username=uname,
                 text=f"Check comment {i+1}",
                 timestamp=base_time + datetime.timedelta(seconds=2 * i),
                 category="Flood Spam"
-            )
-            db.add(c)
+            ))
 
         # 6. Lead comments
         for i in range(cdata["lead"]):
             text = ["Price of this product?", "How can I buy this?", "DM me details please"][i % 3]
-            c = Comment(
+            db.add(Comment(
                 id=f"seed_c_lead_{uname}_{i}",
                 media_id=f"post_1_{creator_id}",
                 username=uname,
                 text=text,
                 timestamp=base_time + datetime.timedelta(hours=6 + i),
                 category="Lead"
-            )
-            db.add(c)
+            ))
+            enqueue_dm(db, creator_id, uname, f"seed_c_lead_{uname}_{i}")
 
-        db.commit()
         update_commenter_stats(db, commenter)
 
+    db.commit()
     return {"status": "success", "message": f"Successfully seeded mock data for creator {creator_id}"}
 
 @app.delete("/api/simulator/clear/{creator_id}")
