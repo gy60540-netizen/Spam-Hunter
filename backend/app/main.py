@@ -905,9 +905,16 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
     if creator.is_mock or not creator.access_token or not creator.ig_user_id:
         return {"status": "skipped", "reason": "Mock creator or missing Meta credentials"}
 
+    # Cache Creator values locally to prevent ORM lazy loading crashes after commits
+    creator_db_id = creator.id
+    access_token = creator.access_token
+    ig_user_id = creator.ig_user_id
+    lead_keywords_str = creator.lead_keywords or "price,buy,link,dm,how much,cost,details"
+    instagram_username = creator.instagram_username
+
     try:
         # 1. Fetch recent posts from Instagram Graph API (limit to last 10 posts)
-        media_url = f"https://graph.facebook.com/v17.0/{creator.ig_user_id}/media?fields=id,caption,permalink,media_type,timestamp&access_token={creator.access_token}&limit=10"
+        media_url = f"https://graph.facebook.com/v17.0/{ig_user_id}/media?fields=id,caption,permalink,media_type,timestamp&access_token={access_token}&limit=10"
         res = requests.get(media_url)
         
         if res.status_code != 200:
@@ -936,7 +943,7 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
             if not post:
                 post = MediaPost(
                     id=post_id,
-                    creator_id=creator.id,
+                    creator_id=creator_db_id,
                     caption=caption,
                     permalink=permalink,
                     media_type=media_type,
@@ -950,7 +957,7 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
             db.commit()
 
             # 2. Fetch comments for each post
-            comments_url = f"https://graph.facebook.com/v17.0/{post_id}/comments?fields=id,text,timestamp,username&access_token={creator.access_token}"
+            comments_url = f"https://graph.facebook.com/v17.0/{post_id}/comments?fields=id,text,timestamp,username&access_token={access_token}"
             c_res = requests.get(comments_url)
             
             if c_res.status_code == 200:
@@ -977,13 +984,13 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
                         # Find/Create commenter
                         commenter = db.query(Commenter).filter(
                             Commenter.username == username,
-                            Commenter.creator_id == creator.id
+                            Commenter.creator_id == creator_db_id
                         ).first()
                         
                         if not commenter:
                             commenter = Commenter(
                                 username=username,
-                                creator_id=creator.id,
+                                creator_id=creator_db_id,
                                 total_comments=0,
                                 last_commented_at=comment_dt
                             )
@@ -992,7 +999,6 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
                             db.refresh(commenter)
                             
                         # Classify the comment text
-                        lead_keywords_str = creator.lead_keywords or "price,buy,link,dm,how much,cost,details"
                         category = classify_comment(db, username, post_id, comment_text, lead_keywords_str)
                         
                         new_comment = Comment(
@@ -1011,9 +1017,9 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
                         
                         # Enqueue auto-DM response for new real comments during sync
                         if category in ["Lead", "Normal"]:
-                            enqueue_dm(db, creator.id, username, comment_id)
+                            enqueue_dm(db, creator_db_id, username, comment_id)
 
-        return {"status": "success", "message": f"Successfully synchronized posts and comments for @{creator.instagram_username}"}
+        return {"status": "success", "message": f"Successfully synchronized posts and comments for @{instagram_username}"}
 
     except Exception as e:
         import traceback
