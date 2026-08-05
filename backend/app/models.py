@@ -100,3 +100,17 @@ class DMQueueItem(Base):
     error_message = Column(Text, nullable=True)
 
     creator = relationship("Creator", back_populates="queue_items")
+
+class CustomerLead(Base):
+    __tablename__ = "customer_leads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    instagram_username = Column(String, index=True)
+    full_name = Column(String, nullable=True)
+    email = Column(String, index=True)
+    phone = Column(String, index=True)
+    plan_name = Column(String, default="Pro Pass (3 Months Offer)")
+    amount_paid = Column(Integer, default=49)
+    payment_status = Column(String, default="PAID")
+    payment_method = Column(String, default="UPI")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

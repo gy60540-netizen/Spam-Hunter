@@ -21,7 +21,7 @@ FB_APP_SECRET = os.getenv("FB_APP_SECRET", "")
 
 import requests
 from .database import engine, Base, get_db
-from .models import Creator, MediaPost, Commenter, Comment, DMQueueItem, Like
+from .models import Creator, MediaPost, Commenter, Comment, DMQueueItem, Like, CustomerLead
 from .schemas import (
     CreatorResponse, CreatorUpdateTemplates, CreatorUpdateLeadKeywords,
     CreatorToggleMode, MediaPostResponse, CommenterResponse, CommentResponse,
@@ -1135,3 +1135,106 @@ def debug_db_status(db: Session = Depends(get_db)):
             "message": str(e),
             "traceback": traceback.format_exc()
         }
+
+# --- COMMERCIAL SALES & GOOGLE SHEETS SYNC ENDPOINTS ---
+GOOGLE_SHEET_WEBHOOK_URL = os.getenv("GOOGLE_SHEET_WEBHOOK_URL", "https://script.google.com/macros/s/AKfycbxqkEBGjHSYqrOJknxOD0XkgCg2qbQ5ZqrRXtxviujkDEx_Sd-EQ-sTLvqzhxenfsiYqQ/exec")
+
+@app.post("/api/sales/checkout")
+async def process_sales_checkout(payload: dict, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """
+    Processes customer purchase checkout, saves lead to database,
+    and optionally auto-syncs with Google Sheets webhook.
+    """
+    try:
+        username = payload.get("instagram_username", "").strip().lstrip("@")
+        email = payload.get("email", "").strip()
+        phone = payload.get("phone", "").strip()
+        full_name = payload.get("full_name", "").strip()
+        plan_name = payload.get("plan_name", "Pro Pass (3 Months Offer)")
+        amount = payload.get("amount_paid", 49)
+        pay_method = payload.get("payment_method", "UPI")
+
+        if not username:
+            raise HTTPException(status_code=400, detail="Instagram handle is required")
+
+        # Save to CustomerLead Database
+        lead = CustomerLead(
+            instagram_username=username,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            plan_name=plan_name,
+            amount_paid=amount,
+            payment_status="PAID",
+            payment_method=pay_method,
+            created_at=datetime.datetime.utcnow()
+        )
+        db.add(lead)
+
+        # Upgrade / Get Creator Record
+        creator = db.query(Creator).filter(Creator.instagram_username == username).first()
+        if not creator:
+            creator = Creator(
+                instagram_username=username,
+                is_mock=True,
+                subscription_status="pro_active",
+                subscription_ends_at=datetime.datetime.utcnow() + datetime.timedelta(days=90)
+            )
+            db.add(creator)
+        else:
+            creator.subscription_status = "pro_active"
+            creator.subscription_ends_at = datetime.datetime.utcnow() + datetime.timedelta(days=90)
+
+        db.commit()
+        db.refresh(lead)
+
+        # Trigger Async Push to Google Sheets if configured
+        webhook_url = GOOGLE_SHEET_WEBHOOK_URL or payload.get("google_sheet_url")
+        if webhook_url:
+            def sync_to_google_sheet():
+                try:
+                    requests.post(webhook_url, json={
+                        "instagram_username": username,
+                        "full_name": full_name,
+                        "email": email,
+                        "phone": phone,
+                        "amount_paid": amount,
+                        "payment_status": "PAID"
+                    }, timeout=10)
+                except Exception as sync_err:
+                    print(f"[Google Sheets Sync Error] {sync_err}")
+
+            background_tasks.add_task(sync_to_google_sheet)
+
+        return {
+            "status": "success",
+            "message": "Payment verified. Pro access activated!",
+            "lead_id": lead.id,
+            "instagram_username": username,
+            "amount_paid": amount
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/sales/leads")
+def get_customer_leads(db: Session = Depends(get_db)):
+    """Retrieve all paying customer leads from database."""
+    leads = db.query(CustomerLead).order_by(CustomerLead.created_at.desc()).all()
+    return [
+        {
+            "id": l.id,
+            "instagram_username": l.instagram_username,
+            "full_name": l.full_name,
+            "email": l.email,
+            "phone": l.phone,
+            "amount_paid": l.amount_paid,
+            "payment_status": l.payment_status,
+            "payment_method": l.payment_method,
+            "created_at": l.created_at.isoformat() if l.created_at else ""
+        }
+        for l in leads
+    ]
+

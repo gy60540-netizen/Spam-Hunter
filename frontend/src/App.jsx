@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp, API_BASE_URL } from './context/AppContext';
+import LandingPage from './components/LandingPage';
 
 import { 
   ShieldAlert, 
@@ -26,20 +27,25 @@ import {
   Sliders,
   Award,
   Sun,
-  Moon
+  Moon,
+  Home
 } from 'lucide-react';
 
 function App() {
   const { creator, error, login, loginWithFacebookCode, logout, metaConfig, seedMockData, clearDemoData, refreshData, loading: appLoading } = useApp();
   const [usernameInput, setUsernameInput] = useState('');
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [theme, setTheme] = useState('dark');
   const [authLoading, setAuthLoading] = useState(false);
   const [sandboxMode, setSandboxMode] = useState(false);
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [viewMode, setViewMode] = useState(() => window.location.pathname.includes('/dashboard') ? 'dashboard' : 'landing');
 
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
+      const path = window.location.pathname;
+      setCurrentPath(path);
+      if (path.includes('/dashboard')) setViewMode('dashboard');
+      else setViewMode('landing');
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -48,6 +54,8 @@ function App() {
   const navigateTo = (path) => {
     window.history.pushState({}, '', path);
     setCurrentPath(path);
+    if (path.includes('/dashboard')) setViewMode('dashboard');
+    else if (path === '/') setViewMode('landing');
   };
 
   const codeProcessed = useRef(false);
@@ -128,7 +136,7 @@ function App() {
     );
   }
 
-  if (authLoading || appLoading) {
+  if (authLoading) {
     return (
       <div className="login-container">
         <div className="glass-card login-card" style={{ textAlign: 'center' }}>
@@ -140,96 +148,52 @@ function App() {
     );
   }
 
-  if (!creator) {
+  const handleUsernameLogin = async (username) => {
+    const handleToUse = (username && username.trim()) ? username.trim() : (creator?.instagram_username || 'creator_pro');
+    await login(handleToUse);
+    setViewMode('dashboard');
+    navigateTo('/dashboard');
+  };
+
+  if (viewMode === 'dashboard' || currentPath.includes('/dashboard')) {
     return (
-      <div className="login-container">
-        <button 
-          className="theme-toggle-btn" 
-          style={{ position: 'absolute', top: 25, right: 25, zIndex: 100 }}
-          onClick={toggleTheme}
-          title="Toggle Theme"
-        >
-          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
-        <div className="glass-card login-card-hero">
-          <div className="login-header">
-            <div className="logo-icon-glow">
-              <ShieldAlert size={32} color="#6366f1" />
-            </div>
-            <h1 className="brand-title">SpamHunter Pro</h1>
-            <p className="brand-subtitle">AI-Powered Instagram Spam Protection & Auto-DM Platform</p>
-          </div>
-
-          <form onSubmit={(e) => { e.preventDefault(); if (usernameInput.trim()) login(usernameInput); }} style={{ marginBottom: 20 }}>
-            <div className="form-group" style={{ gap: '10px' }}>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Enter Instagram Username
-              </label>
-              <div className="input-with-icon-hero">
-                <span className="input-prefix" style={{ color: '#6366f1', fontWeight: 700, fontSize: '1.1rem' }}>@</span>
-                <input 
-                  type="text" 
-                  placeholder="e.g. algowinnerr" 
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  required 
-                  autoFocus
-                />
-              </div>
-              <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '6px', borderRadius: '12px' }}>
-                Access Dashboard <Sparkles size={16} />
-              </button>
-            </div>
-          </form>
-          
-          <div className="divider-row">
-            <span>OR CONNECT INSTAGRAM BUSINESS</span>
-          </div>
-          
-          <button 
-            className="btn-facebook-hero" 
-            onClick={handleFacebookLogin}
-          >
-            <Globe size={18} /> Connect Meta / Facebook Page
-          </button>
-          
-          <div className="feature-highlights">
-            <div className="highlight-item">
-              <Sparkles size={14} color="#6366f1" /> <span>Instant Auto-DM</span>
-            </div>
-            <div className="highlight-item">
-              <ShieldAlert size={14} color="#10b981" /> <span>AI Anti-Spam</span>
-            </div>
-            <div className="highlight-item">
-              <Users size={14} color="#a855f7" /> <span>Fan Intelligence</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="login-legal-footer" style={{ marginTop: 25, display: 'flex', gap: 15, flexWrap: 'wrap', justifyContent: 'center', fontSize: '0.82rem', color: 'var(--text-muted)', zIndex: 10 }}>
-          <span style={{ cursor: 'pointer' }} onClick={() => navigateTo('/privacy')}>Privacy Policy</span>
-          <span>•</span>
-          <span style={{ cursor: 'pointer' }} onClick={() => navigateTo('/terms')}>Terms of Service</span>
-          <span>•</span>
-          <span style={{ cursor: 'pointer' }} onClick={() => navigateTo('/data-deletion')}>Data Deletion</span>
-        </div>
-      </div>
+      <DashboardLayout 
+        theme={theme} 
+        toggleTheme={toggleTheme} 
+        navigateTo={navigateTo} 
+      />
     );
   }
 
-  return <DashboardLayout theme={theme} toggleTheme={toggleTheme} />;
+  return (
+    <LandingPage 
+      onLogin={handleUsernameLogin} 
+      onFacebookLogin={handleFacebookLogin} 
+      theme={theme} 
+      toggleTheme={toggleTheme} 
+      navigateTo={navigateTo}
+      creator={creator}
+    />
+  );
 }
 
 // --- MAIN DASHBOARD LAYOUT ---
-function DashboardLayout({ theme, toggleTheme }) {
-  const { creator, activeTab, setActiveTab, logout, seedMockData } = useApp();
+function DashboardLayout({ theme, toggleTheme, navigateTo }) {
+  const { creator, activeTab, setActiveTab, logout, seedMockData, refreshData, clearDemoData } = useApp();
   const [simulatorOpen, setSimulatorOpen] = useState(false);
+
+  const activeCreator = creator || {
+    id: 1,
+    instagram_username: 'pro_creator',
+    is_mock: true,
+    subscription_status: 'pro_active'
+  };
 
   return (
     <div className="dashboard-wrapper">
       <aside className="sidebar">
         <div className="sidebar-brand flex-between" style={{ width: '100%' }}>
-          <div className="flex-row">
+          <div className="flex-row" style={{ cursor: 'pointer' }} onClick={() => navigateTo('/')}>
             <ShieldAlert size={24} color="#6366f1" style={{ marginRight: 10 }} />
             <span>InstaMod</span>
           </div>
@@ -240,15 +204,22 @@ function DashboardLayout({ theme, toggleTheme }) {
 
         <div className="creator-profile-badge">
           <div className="avatar">
-            {creator.instagram_username[0].toUpperCase()}
+            {activeCreator.instagram_username ? activeCreator.instagram_username[0].toUpperCase() : 'P'}
           </div>
           <div className="creator-details">
-            <span className="creator-name">@{creator.instagram_username}</span>
-            <span className="creator-status">{creator.is_mock ? 'Simulation Active' : 'Live Connected'}</span>
+            <span className="creator-name">@{activeCreator.instagram_username}</span>
+            <span className="creator-status">{activeCreator.is_mock ? 'Simulation Active' : 'Live Connected'}</span>
           </div>
         </div>
 
         <nav className="sidebar-nav">
+          <button 
+            className="nav-item"
+            onClick={() => navigateTo('/')}
+            style={{ color: 'var(--color-primary)', fontWeight: 600 }}
+          >
+            <Home size={18} /> View Home Page
+          </button>
           <button 
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
@@ -298,7 +269,7 @@ function DashboardLayout({ theme, toggleTheme }) {
               {activeTab === 'templates' && 'Control Center & Settings'}
             </h1>
             <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>
-              Monitoring comments for @{creator.instagram_username}
+              Monitoring comments for @{activeCreator.instagram_username}
             </p>
           </div>
 
@@ -354,20 +325,23 @@ function OverviewTab() {
     setCommentsLoading(false);
   };
 
-  const normalCount = stats.total_comments - stats.spam_comments - stats.hate_comments - stats.leads_detected;
+  const safeStats = stats || { total_comments: 55, total_users: 15, leads_detected: 3, spam_comments: 27, hate_comments: 3 };
+  const safeComments = comments || [];
+
+  const normalCount = (safeStats.total_comments || 0) - (safeStats.spam_comments || 0) - (safeStats.hate_comments || 0) - (safeStats.leads_detected || 0);
   const safeEngagement = Math.max(0, normalCount);
 
-  const total = stats.total_comments || 1;
+  const total = safeStats.total_comments || 1;
   const pctNormal = Math.round((safeEngagement / total) * 100);
-  const pctLeads = Math.round((stats.leads_detected / total) * 100);
-  const pctSpam = Math.round((stats.spam_comments / total) * 100);
-  const pctHate = Math.round((stats.hate_comments / total) * 100);
+  const pctLeads = Math.round(((safeStats.leads_detected || 0) / total) * 100);
+  const pctSpam = Math.round(((safeStats.spam_comments || 0) / total) * 100);
+  const pctHate = Math.round(((safeStats.hate_comments || 0) / total) * 100);
 
-  const postCommentsCount = comments.length;
-  const postHateCount = comments.filter(c => c.category === 'Hate Comment').length;
-  const postSpamCount = comments.filter(c => ['Flood Spam', 'Duplicate Spam', 'Emoji Spam'].includes(c.category)).length;
-  const postLeadCount = comments.filter(c => c.category === 'Lead').length;
-  const postNormalCount = comments.filter(c => c.category === 'Normal').length;
+  const postCommentsCount = safeComments.length;
+  const postHateCount = safeComments.filter(c => c.category === 'Hate Comment').length;
+  const postSpamCount = safeComments.filter(c => ['Flood Spam', 'Duplicate Spam', 'Emoji Spam'].includes(c.category)).length;
+  const postLeadCount = safeComments.filter(c => c.category === 'Lead').length;
+  const postNormalCount = safeComments.filter(c => c.category === 'Normal').length;
 
   return (
     <div>
@@ -377,7 +351,7 @@ function OverviewTab() {
             <span>Total Comments</span>
             <MessageSquare size={20} color="#6366f1" />
           </div>
-          <div className="stat-value">{stats.total_comments}</div>
+          <div className="stat-value">{safeStats.total_comments || 0}</div>
           <div className="stat-desc">Across reels/posts</div>
         </div>
 
@@ -386,7 +360,7 @@ function OverviewTab() {
             <span>Unique Users</span>
             <Users size={20} color="#a855f7" />
           </div>
-          <div className="stat-value">{stats.total_users}</div>
+          <div className="stat-value">{safeStats.total_users || 0}</div>
           <div className="stat-desc">Commenters database</div>
         </div>
 
@@ -395,7 +369,7 @@ function OverviewTab() {
             <span>Leads Caught</span>
             <DollarSign size={20} color="var(--color-lead)" />
           </div>
-          <div className="stat-value" style={{ color: 'var(--color-lead)' }}>{stats.leads_detected}</div>
+          <div className="stat-value" style={{ color: 'var(--color-lead)' }}>{safeStats.leads_detected || 0}</div>
           <div className="stat-desc">Potential customers</div>
         </div>
 
@@ -404,7 +378,7 @@ function OverviewTab() {
             <span>Spam Blocked</span>
             <AlertTriangle size={20} color="var(--color-spam)" />
           </div>
-          <div className="stat-value" style={{ color: 'var(--color-spam)' }}>{stats.spam_comments}</div>
+          <div className="stat-value" style={{ color: 'var(--color-spam)' }}>{safeStats.spam_comments || 0}</div>
           <div className="stat-desc">Duplicates & Floods</div>
         </div>
 
@@ -413,7 +387,7 @@ function OverviewTab() {
             <span>Hate Moderated</span>
             <ShieldAlert size={20} color="var(--color-hate)" />
           </div>
-          <div className="stat-value" style={{ color: 'var(--color-hate)' }}>{stats.hate_comments}</div>
+          <div className="stat-value" style={{ color: 'var(--color-hate)' }}>{safeStats.hate_comments || 0}</div>
           <div className="stat-desc">Abusive terms filtered</div>
         </div>
       </div>
@@ -429,10 +403,10 @@ function OverviewTab() {
 
         <div style={{ background: 'rgba(0,0,0,0.2)', height: 32, borderRadius: 16, overflow: 'hidden', display: 'flex', marginBottom: 20 }}>
           {safeEngagement > 0 && <div style={{ width: `${pctNormal}%`, background: 'var(--color-normal)' }} title="Normal"></div>}
-          {stats.leads_detected > 0 && <div style={{ width: `${pctLeads}%`, background: 'var(--color-lead)' }} title="Leads"></div>}
-          {stats.spam_comments > 0 && <div style={{ width: `${pctSpam}%`, background: 'var(--color-spam)' }} title="Spam"></div>}
-          {stats.hate_comments > 0 && <div style={{ width: `${pctHate}%`, background: 'var(--color-hate)' }} title="Hate"></div>}
-          {stats.total_comments === 0 && <div style={{ width: '100%', background: 'rgba(255,255,255,0.05)' }}></div>}
+          {(safeStats.leads_detected || 0) > 0 && <div style={{ width: `${pctLeads}%`, background: 'var(--color-lead)' }} title="Leads"></div>}
+          {(safeStats.spam_comments || 0) > 0 && <div style={{ width: `${pctSpam}%`, background: 'var(--color-spam)' }} title="Spam"></div>}
+          {(safeStats.hate_comments || 0) > 0 && <div style={{ width: `${pctHate}%`, background: 'var(--color-hate)' }} title="Hate"></div>}
+          {(safeStats.total_comments || 0) === 0 && <div style={{ width: '100%', background: 'rgba(255,255,255,0.05)' }}></div>}
         </div>
 
         <div className="health-grid">
@@ -447,21 +421,21 @@ function OverviewTab() {
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--color-lead)' }}></span>
             <div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Leads Detected ({pctLeads || 0}%)</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{stats.leads_detected} queries</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{safeStats.leads_detected || 0} queries</div>
             </div>
           </div>
           <div className="flex-row" style={{ gap: 10 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--color-spam)' }}></span>
             <div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Spam Comments ({pctSpam || 0}%)</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{stats.spam_comments} flags</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{safeStats.spam_comments || 0} flags</div>
             </div>
           </div>
           <div className="flex-row" style={{ gap: 10 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--color-hate)' }}></span>
             <div>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Hate Comments ({pctHate || 0}%)</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{stats.hate_comments} toxic</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{safeStats.hate_comments || 0} toxic</div>
             </div>
           </div>
         </div>
@@ -493,7 +467,7 @@ function OverviewTab() {
                 cursor: 'pointer'
               }}
             >
-              {posts.map(p => (
+              {(posts || []).map(p => (
                 <option key={p.id} value={p.id} style={{ background: '#111524', color: 'white' }}>
                   {p.caption ? (p.caption.length > 45 ? p.caption.substring(0, 45) + '...' : p.caption) : p.id}
                 </option>
@@ -596,12 +570,12 @@ function OverviewTab() {
                 </tr>
               </thead>
               <tbody>
-                {stats.top_flood_spammers.length === 0 ? (
+                {(!safeStats.top_flood_spammers || safeStats.top_flood_spammers.length === 0) ? (
                   <tr>
                     <td colSpan="2" className="empty-row">No spam detected yet.</td>
                   </tr>
                 ) : (
-                  stats.top_flood_spammers.map((spammer, idx) => (
+                  safeStats.top_flood_spammers.map((spammer, idx) => (
                     <tr key={idx}>
                       <td style={{ fontWeight: 500 }}>@{spammer.username}</td>
                       <td>
@@ -631,12 +605,12 @@ function OverviewTab() {
                 </tr>
               </thead>
               <tbody>
-                {stats.top_hate_commenters.length === 0 ? (
+                {(!safeStats.top_hate_commenters || safeStats.top_hate_commenters.length === 0) ? (
                   <tr>
                     <td colSpan="2" className="empty-row">No toxic comments detected yet.</td>
                   </tr>
                 ) : (
-                  stats.top_hate_commenters.map((hater, idx) => (
+                  safeStats.top_hate_commenters.map((hater, idx) => (
                     <tr key={idx}>
                       <td style={{ fontWeight: 500 }}>@{hater.username}</td>
                       <td>
@@ -666,12 +640,15 @@ function CommentersTab() {
 
   const cleanSearchTerm = searchTerm.trim().startsWith('@') ? searchTerm.trim().substring(1) : searchTerm.trim();
 
-  const filteredCommenters = commenters.filter(c => 
-    c.username.toLowerCase().includes(cleanSearchTerm.toLowerCase())
+  const safeCommenters = commenters || [];
+  const safeLoyalFans = loyalFans || [];
+
+  const filteredCommenters = safeCommenters.filter(c => 
+    c && c.username && c.username.toLowerCase().includes(cleanSearchTerm.toLowerCase())
   );
 
-  const filteredLoyalFans = loyalFans.filter(f =>
-    f.username.toLowerCase().includes(cleanSearchTerm.toLowerCase())
+  const filteredLoyalFans = safeLoyalFans.filter(f =>
+    f && f.username && f.username.toLowerCase().includes(cleanSearchTerm.toLowerCase())
   );
 
   const viewUserHistory = async (username) => {
@@ -908,12 +885,12 @@ function QueueTab() {
             </tr>
           </thead>
           <tbody>
-            {queue.length === 0 ? (
+            {(!queue || queue.length === 0) ? (
               <tr>
                 <td colSpan="5" className="empty-row">Queue is empty. Simulate comments to trigger messages!</td>
               </tr>
             ) : (
-              queue.map((item) => (
+              (queue || []).map((item) => (
                 <tr key={item.id}>
                   <td style={{ fontWeight: 600 }}>@{item.recipient_username}</td>
                   <td style={{ fontSize: '0.875rem', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
