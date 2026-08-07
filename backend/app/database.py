@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
 # SQLite Database URL or Environment Database URL
 import os
@@ -31,13 +32,17 @@ if "&pgbouncer=true" in DATABASE_URL:
 connect_args = {}
 if "sqlite" in DATABASE_URL:
     connect_args["check_same_thread"] = False
-
-engine = create_engine(
-    DATABASE_URL, 
-    connect_args=connect_args,
-    pool_pre_ping=True,
-    pool_recycle=300
-)
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_recycle=300
+    )
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        poolclass=NullPool
+    )
 
 # Sessionmaker for DB transactions
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)

@@ -222,7 +222,7 @@ export default function LandingPage({
 
       {/* --- HERO SECTION WITH LIVE INSTAGRAM PHONE MOCKUP --- */}
       <div className="sp-hero-wrapper">
-        <SpamBattlefieldCanvas />
+        {/* <SpamBattlefieldCanvas /> */}
         <section className="sp-hero" id="auth">
           <div className="sp-hero-glow"></div>
         <div className="sp-hero-grid">

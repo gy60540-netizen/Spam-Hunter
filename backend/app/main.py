@@ -266,7 +266,7 @@ def facebook_callback(payload: FacebookCallbackRequest, db: Session = Depends(ge
         # 1. Exchange code for short-lived User Access Token
         token_url = f"https://graph.facebook.com/v17.0/oauth/access_token?client_id={FB_APP_ID}&redirect_uri={redirect_uri}&client_secret={FB_APP_SECRET}&code={payload.code}"
         print(f"Requesting token from: {token_url}")
-        res = requests.get(token_url)
+        res = requests.get(token_url, timeout=10)
         print(f"Token response status: {res.status_code}")
         print(f"Token response body: {res.text}")
         
@@ -280,14 +280,14 @@ def facebook_callback(payload: FacebookCallbackRequest, db: Session = Depends(ge
 
         # 2. Exchange short-lived token for long-lived User Access Token
         long_lived_url = f"https://graph.facebook.com/v17.0/oauth/access_token?grant_type=fb_exchange_token&client_id={FB_APP_ID}&client_secret={FB_APP_SECRET}&fb_exchange_token={user_access_token}"
-        res = requests.get(long_lived_url)
+        res = requests.get(long_lived_url, timeout=10)
         if res.status_code == 200:
             user_access_token = res.json().get("access_token", user_access_token)
 
         # 3. Get User's Pages to find the connected Instagram Account
         pages_url = f"https://graph.facebook.com/v17.0/me/accounts?access_token={user_access_token}"
         print(f"Fetching Pages from: {pages_url}")
-        res = requests.get(pages_url)
+        res = requests.get(pages_url, timeout=10)
         print(f"Pages response status: {res.status_code}")
         if res.status_code != 200:
             raise HTTPException(status_code=400, detail=f"Failed to fetch pages: {res.text}")
@@ -304,7 +304,7 @@ def facebook_callback(payload: FacebookCallbackRequest, db: Session = Depends(ge
             p_token = page.get("access_token")
             
             ig_url = f"https://graph.facebook.com/v17.0/{page_id}?fields=instagram_business_account&access_token={p_token}"
-            ig_res = requests.get(ig_url)
+            ig_res = requests.get(ig_url, timeout=10)
             print(f"Page {page_id} IG response ({ig_res.status_code}): {ig_res.text}")
             if ig_res.status_code == 200:
                 ig_data = ig_res.json()
@@ -319,7 +319,7 @@ def facebook_callback(payload: FacebookCallbackRequest, db: Session = Depends(ge
             
         # Get Instagram Username
         ig_user_url = f"https://graph.facebook.com/v17.0/{instagram_business_account_id}?fields=username&access_token={page_access_token}"
-        ig_user_res = requests.get(ig_user_url)
+        ig_user_res = requests.get(ig_user_url, timeout=10)
         if ig_user_res.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to fetch Instagram username.")
             
@@ -560,9 +560,9 @@ def get_commenter_history(username: str, db: Session = Depends(get_db)):
 # --- DM QUEUE ---
 
 @app.get("/api/queue/{creator_id}", response_model=List[DMQueueItemResponse])
-async def get_dm_queue(creator_id: int, db: Session = Depends(get_db)):
+def get_dm_queue(creator_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     check_subscription(creator_id, db)
-    await process_creator_pending_dms(creator_id)
+    background_tasks.add_task(process_creator_pending_dms, creator_id)
     return db.query(DMQueueItem).filter(
         DMQueueItem.creator_id == creator_id
     ).order_by(DMQueueItem.scheduled_for.desc()).all()
@@ -890,10 +890,10 @@ def clear_mock_data(creator_id: int, db: Session = Depends(get_db)):
 sync_lock = threading.Lock()
 
 @app.post("/api/creators/{creator_id}/sync")
-async def sync_instagram_data(creator_id: int, db: Session = Depends(get_db)):
+def sync_instagram_data(creator_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     with sync_lock:
         res = _sync_instagram_data_internal(creator_id, db)
-        await process_creator_pending_dms(creator_id)
+        background_tasks.add_task(process_creator_pending_dms, creator_id)
         return res
 
 def _sync_instagram_data_internal(creator_id: int, db: Session):
@@ -915,7 +915,7 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
     try:
         # 1. Fetch recent posts from Instagram Graph API (limit to last 10 posts)
         media_url = f"https://graph.facebook.com/v17.0/{ig_user_id}/media?fields=id,caption,permalink,media_type,timestamp&access_token={access_token}&limit=10"
-        res = requests.get(media_url)
+        res = requests.get(media_url, timeout=10)
         
         if res.status_code != 200:
             print(f"[Sync Error] Meta API response status: {res.status_code}, body: {res.text}")
@@ -958,7 +958,7 @@ def _sync_instagram_data_internal(creator_id: int, db: Session):
 
             # 2. Fetch comments for each post
             comments_url = f"https://graph.facebook.com/v17.0/{post_id}/comments?fields=id,text,timestamp,username&access_token={access_token}"
-            c_res = requests.get(comments_url)
+            c_res = requests.get(comments_url, timeout=10)
             
             if c_res.status_code == 200:
                 comments_data = c_res.json().get("data", [])

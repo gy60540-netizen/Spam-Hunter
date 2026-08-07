@@ -59,7 +59,8 @@ def enqueue_dm(db: Session, creator_id: int, recipient_username: str, comment_id
         DMQueueItem.status == "PENDING"
     ).order_by(DMQueueItem.scheduled_for.desc()).first()
 
-    delay_seconds = random.randint(3, 5)
+    # Safe but fast 1-2 second delay to protect account while keeping it quick
+    delay_seconds = random.randint(1, 2)
 
     if latest_item and latest_item.scheduled_for > now:
         scheduled_for = latest_item.scheduled_for + datetime.timedelta(seconds=delay_seconds)
@@ -94,20 +95,20 @@ def send_meta_dm(creator, comment_id: str, message_text: str):
 
     # Endpoint 1: Instagram Business User ID
     url1 = f"https://graph.facebook.com/v17.0/{creator.ig_user_id}/messages?access_token={creator.access_token}"
-    res1 = requests.post(url1, json=payload)
+    res1 = requests.post(url1, json=payload, timeout=5)
     if res1.status_code == 200:
         return True, res1.text
 
     # Endpoint 2: /me/messages
     url2 = f"https://graph.facebook.com/v17.0/me/messages?access_token={creator.access_token}"
-    res2 = requests.post(url2, json=payload)
+    res2 = requests.post(url2, json=payload, timeout=5)
     if res2.status_code == 200:
         return True, res2.text
 
     # Endpoint 3: Facebook Page ID
     if creator.fb_page_id:
         url3 = f"https://graph.facebook.com/v17.0/{creator.fb_page_id}/messages?access_token={creator.access_token}"
-        res3 = requests.post(url3, json=payload)
+        res3 = requests.post(url3, json=payload, timeout=5)
         if res3.status_code == 200:
             return True, res3.text
 
@@ -121,6 +122,7 @@ async def run_dm_queue_worker():
     """
     print("DM Queue Worker Started...")
     while True:
+        db = None
         try:
             db = SessionLocal()
             now = datetime.datetime.utcnow()
@@ -156,7 +158,7 @@ async def run_dm_queue_worker():
                         item.error_message = "No Instagram User ID found"
                         print(f"[Worker] DM to @{item.recipient_username} failed: No Instagram User ID found")
                     else:
-                        success, err_msg = send_meta_dm(creator, item.comment_id, item.message_text)
+                        success, err_msg = await asyncio.to_thread(send_meta_dm, creator, item.comment_id, item.message_text)
                         if success:
                             item.status = "SENT"
                             item.sent_at = datetime.datetime.utcnow()
@@ -168,9 +170,11 @@ async def run_dm_queue_worker():
                 
                 db.commit()
 
-            db.close()
         except Exception as e:
             print(f"[Worker Error] {str(e)}")
+        finally:
+            if db:
+                db.close()
         
         await asyncio.sleep(3)
 
@@ -218,7 +222,7 @@ async def process_creator_pending_dms(creator_id: int):
                     item.error_message = "No Instagram User ID found"
                     print(f"[Worker] DM to @{item.recipient_username} failed: No Instagram User ID found")
                 else:
-                    success, err_msg = send_meta_dm(creator, item.comment_id, item.message_text)
+                    success, err_msg = await asyncio.to_thread(send_meta_dm, creator, item.comment_id, item.message_text)
                     if success:
                         item.status = "SENT"
                         item.sent_at = datetime.datetime.utcnow()

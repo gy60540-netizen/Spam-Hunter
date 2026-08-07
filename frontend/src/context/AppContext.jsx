@@ -24,66 +24,94 @@ export const AppProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [metaConfig, setMetaConfig] = useState(null);
+  const [isWakingUp, setIsWakingUp] = useState(false);
 
-  // Auto-login from localStorage on mount and sync with API
-  useEffect(() => {
-    // Fetch Meta configuration
-    fetch(`${API_BASE_URL}/auth/config`)
-      .then(res => {
-        if (res.ok) return res.json();
-      })
-      .then(data => {
-        if (data) setMetaConfig(data);
-      })
-      .catch(err => console.error("Failed to fetch meta config:", err));
-
-    const savedCreator = localStorage.getItem('instagram_creator');
-    if (savedCreator) {
-      try {
-        const parsed = JSON.parse(savedCreator);
-        setCreator(parsed);
-        // Sync fresh profile details (e.g. subscription status)
-        fetch(`${API_BASE_URL}/creators/${parsed.id}`)
-          .then(res => {
-            if (res.ok) return res.json();
-            throw new Error();
-          })
-          .then(data => {
-            setCreator(data);
-            localStorage.setItem('instagram_creator', JSON.stringify(data));
-          })
-          .catch(() => {
-            // Fallback: keep localStorage version if backend is offline
-          });
-      } catch (e) {
-        localStorage.removeItem('instagram_creator');
+  const fetchPosts = async () => {
+    if (!creator) return;
+    console.log("[AppContext] fetchPosts called for", creator.instagram_username);
+    try {
+      const res = await fetch(`${API_BASE_URL}/posts/${creator.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPosts(data);
       }
+    } catch (e) {
+      console.warn('fetchPosts note:', e);
     }
-  }, []);
+  };
 
-  // Fetch data whenever creator changes
-  useEffect(() => {
-    if (creator) {
-      fetchDashboardData();
-
-      // Fast auto-polling every 3 seconds for instant real-time UI updates
-      const interval = setInterval(() => {
-        fetchStats();
-        fetchQueue();
-      }, 3000);
-
-      return () => clearInterval(interval);
-    } else {
-      setPosts([]);
-      setCommenters([]);
-      setLoyalFans([]);
-      setQueue([]);
+  const fetchStats = async () => {
+    if (!creator) return;
+    console.log("[AppContext] fetchStats called for", creator.instagram_username);
+    try {
+      const res = await fetch(`${API_BASE_URL}/analytics/${creator.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (e) {
+      console.warn('fetchStats note:', e);
     }
-  }, [creator]);
+  };
+
+  const fetchCommenters = async () => {
+    if (!creator) return;
+    console.log("[AppContext] fetchCommenters called for", creator.instagram_username);
+    try {
+      const res = await fetch(`${API_BASE_URL}/commenters/${creator.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCommenters(data);
+      }
+    } catch (e) {
+      console.warn('fetchCommenters note:', e);
+    }
+  };
+
+  const fetchLoyalFans = async () => {
+    if (!creator) return;
+    console.log("[AppContext] fetchLoyalFans called for", creator.instagram_username);
+    try {
+      const res = await fetch(`${API_BASE_URL}/loyalty/${creator.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLoyalFans(data);
+      }
+    } catch (e) {
+      console.warn('fetchLoyalFans note:', e);
+    }
+  };
+
+  const fetchQueue = async () => {
+    if (!creator) return;
+    console.log("[AppContext] fetchQueue called for", creator.instagram_username);
+    try {
+      const res = await fetch(`${API_BASE_URL}/queue/${creator.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setQueue(data);
+      }
+    } catch (e) {
+      console.warn('fetchQueue note:', e);
+    }
+  };
+
+  const fetchPostComments = async (mediaId) => {
+    console.log("[AppContext] fetchPostComments called for", mediaId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/posts/${mediaId}/comments`);
+      if (!res.ok) throw new Error('Failed to fetch post comments');
+      return await res.json();
+    } catch (err) {
+      console.error(err);
+      return [];
+    }
+  };
 
   const fetchDashboardData = async () => {
-    if (!creator) return;
-    setLoading(true);
+    if (!creator || loading) return;
+    console.log("[AppContext] fetchDashboardData starting for", creator.instagram_username);
+    setTimeout(() => setLoading(true), 0);
     try {
       // Sync real Instagram data first if it's a live connection
       if (!creator.is_mock) {
@@ -108,85 +136,115 @@ export const AppProvider = ({ children }) => {
       console.error("Error loading dashboard data:", err);
       setError('Failed to connect to backend server. Make sure FastAPI is running.');
     } finally {
-      setLoading(false);
+      setTimeout(() => setLoading(false), 0);
     }
   };
 
-  const fetchPosts = async () => {
-    if (!creator) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/posts/${creator.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPosts(data);
+  // Auto-login from localStorage on mount and sync with API
+  useEffect(() => {
+    console.log("[AppContext] Mount useEffect running");
+    
+    // Set up AbortController for a 12 second timeout
+    const controller = new AbortController();
+    const abortTimeout = setTimeout(() => {
+      console.log("[AppContext] /auth/config request timed out, checking wakeup state");
+      controller.abort();
+    }, 12000);
+
+    // Detect if server is sleeping (taking longer than 2.5 seconds to reply)
+    const wakeupTimer = setTimeout(() => {
+      console.log("[AppContext] Backend cold-start detected. Setting isWakingUp to true.");
+      setIsWakingUp(true);
+    }, 2500);
+
+    fetch(`${API_BASE_URL}/auth/config`, { signal: controller.signal })
+      .then(res => {
+        clearTimeout(abortTimeout);
+        clearTimeout(wakeupTimer);
+        setIsWakingUp(false);
+        if (res.ok) return res.json();
+        throw new Error(`Server responded with status ${res.status}`);
+      })
+      .then(data => {
+        if (data) setMetaConfig(data);
+      })
+      .catch(err => {
+        clearTimeout(abortTimeout);
+        clearTimeout(wakeupTimer);
+        setIsWakingUp(false);
+        console.error("Failed to fetch meta config:", err);
+      });
+
+    const savedCreator = localStorage.getItem('instagram_creator');
+    if (savedCreator) {
+      try {
+        const parsed = JSON.parse(savedCreator);
+        console.log("[AppContext] Found saved creator in localStorage:", parsed);
+        setTimeout(() => setCreator(parsed), 0);
+        // Sync fresh profile details (e.g. subscription status) with timeout
+        const syncController = new AbortController();
+        const syncTimeout = setTimeout(() => syncController.abort(), 12000);
+        fetch(`${API_BASE_URL}/creators/${parsed.id}`, { signal: syncController.signal })
+          .then(res => {
+            clearTimeout(syncTimeout);
+            if (res.ok) return res.json();
+            throw new Error();
+          })
+          .then(data => {
+            console.log("[AppContext] Fresh creator sync success:", data);
+            setCreator(data);
+            localStorage.setItem('instagram_creator', JSON.stringify(data));
+          })
+          .catch(() => {
+            clearTimeout(syncTimeout);
+            console.log("[AppContext] Fresh creator sync failed, keeping local version");
+          });
+      } catch (e) {
+        localStorage.removeItem('instagram_creator');
       }
-    } catch (e) {
-      console.warn('fetchPosts note:', e);
     }
-  };
+  }, []);
 
-  const fetchStats = async () => {
-    if (!creator) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/analytics/${creator.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
-    } catch (e) {
-      console.warn('fetchStats note:', e);
-    }
-  };
+  // Fetch data whenever creator changes
+  useEffect(() => {
+    console.log("[AppContext] creator useEffect running, creator is:", creator);
+    if (creator) {
+      fetchDashboardData();
 
-  const fetchCommenters = async () => {
-    if (!creator) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/commenters/${creator.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCommenters(data);
-      }
-    } catch (e) {
-      console.warn('fetchCommenters note:', e);
-    }
-  };
+      // Safe recursive setTimeout polling to prevent overlapping concurrent calls
+      let active = true;
+      let timerId = null;
 
-  const fetchLoyalFans = async () => {
-    if (!creator) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/loyalty/${creator.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLoyalFans(data);
-      }
-    } catch (e) {
-      console.warn('fetchLoyalFans note:', e);
-    }
-  };
+      const poll = async () => {
+        if (!active) return;
+        try {
+          await Promise.all([
+            fetchStats(),
+            fetchQueue()
+          ]);
+        } catch (e) {
+          console.warn("Polling error:", e);
+        }
+        if (active) {
+          timerId = setTimeout(poll, 5000);
+        }
+      };
 
-  const fetchQueue = async () => {
-    if (!creator) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/queue/${creator.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setQueue(data);
-      }
-    } catch (e) {
-      console.warn('fetchQueue note:', e);
-    }
-  };
+      timerId = setTimeout(poll, 5000);
 
-  const fetchPostComments = async (mediaId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/posts/${mediaId}/comments`);
-      if (!res.ok) throw new Error('Failed to fetch post comments');
-      return await res.json();
-    } catch (err) {
-      console.error(err);
-      return [];
+      return () => {
+        active = false;
+        clearTimeout(timerId);
+      };
+    } else {
+      setTimeout(() => {
+        setPosts([]);
+        setCommenters([]);
+        setLoyalFans([]);
+        setQueue([]);
+      }, 0);
     }
-  };
+  }, [creator]);
 
   const login = async (username) => {
     const cleanUser = (username && username.trim()) ? username.trim().replace(/^@/, '') : 'pro_creator';
@@ -396,6 +454,7 @@ export const AppProvider = ({ children }) => {
       loading,
       error,
       metaConfig,
+      isWakingUp,
       login,
       loginWithFacebookCode,
       logout,

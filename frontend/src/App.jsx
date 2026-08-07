@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 function App() {
-  const { creator, error, login, loginWithFacebookCode, logout, metaConfig, seedMockData, clearDemoData, refreshData, loading: appLoading } = useApp();
+  const { creator, error, login, loginWithFacebookCode, logout, metaConfig, seedMockData, clearDemoData, refreshData, loading: appLoading, isWakingUp } = useApp();
   const [usernameInput, setUsernameInput] = useState('');
   const [theme, setTheme] = useState('dark');
   const [authLoading, setAuthLoading] = useState(false);
@@ -148,6 +148,23 @@ function App() {
     );
   }
 
+  if (isWakingUp && !creator) {
+    return (
+      <div className="login-container">
+        <div className="glass-card login-card" style={{ textAlign: 'center', maxWidth: 400 }}>
+          <div className="spinner" style={{ margin: '0 auto 20px', width: 40, height: 40 }}></div>
+          <h2 style={{ color: 'var(--color-primary)' }}>Waking Up Backend Server...</h2>
+          <p style={{ color: '#9ca3af', marginTop: 10 }}>
+            Render's free tier services go to sleep after inactivity.
+          </p>
+          <p style={{ color: '#6b7280', fontSize: '13px', marginTop: 8 }}>
+            Please wait 30-50 seconds for the database and API to wake up.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const handleUsernameLogin = async (username) => {
     const handleToUse = (username && username.trim()) ? username.trim() : (creator?.instagram_username || 'creator_pro');
     await login(handleToUse);
@@ -179,7 +196,7 @@ function App() {
 
 // --- MAIN DASHBOARD LAYOUT ---
 function DashboardLayout({ theme, toggleTheme, navigateTo }) {
-  const { creator, activeTab, setActiveTab, logout, seedMockData, refreshData, clearDemoData } = useApp();
+  const { creator, activeTab, setActiveTab, logout, seedMockData, refreshData, clearDemoData, error } = useApp();
   const [simulatorOpen, setSimulatorOpen] = useState(false);
 
   const activeCreator = creator || {
@@ -260,6 +277,27 @@ function DashboardLayout({ theme, toggleTheme, navigateTo }) {
       </aside>
 
       <main className="main-content">
+        {error && (
+          <div className="error-banner" style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            color: '#fca5a5',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '0.9rem',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+          }}>
+            <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, fontWeight: 500 }}>{error}</div>
+            <button className="btn-secondary" onClick={refreshData} style={{ padding: '6px 12px', fontSize: '0.8rem', height: 'auto', flexShrink: 0 }}>
+              <RotateCcw size={12} style={{ marginRight: 4 }} /> Retry Sync
+            </button>
+          </div>
+        )}
         <header className="content-header">
           <div>
             <h1>
