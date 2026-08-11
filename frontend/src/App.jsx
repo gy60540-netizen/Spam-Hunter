@@ -315,6 +315,9 @@ function DashboardLayout({ theme, toggleTheme, navigateTo }) {
             <button className="btn-secondary" onClick={refreshData} title="Sync Real Instagram Comments">
               <RotateCcw size={16} /> Sync Real Instagram
             </button>
+            <button className="btn-secondary" onClick={seedMockData} title="Seed Demo Sample Data" style={{ color: '#10b981' }}>
+              <Sparkles size={16} /> Seed Demo Data
+            </button>
             <button className="btn-secondary" onClick={clearDemoData} title="Clear Demo Sample Data" style={{ color: '#f43f5e' }}>
               <Trash2 size={16} /> Clear Demo Data
             </button>
@@ -565,7 +568,7 @@ function OverviewTab() {
                 </tr>
               ) : comments.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="empty-row">No comments posted on this reel yet. Use simulator presets to add some!</td>
+                  <td colSpan="4" className="empty-row">No comments posted on this reel yet. Click "Seed Demo Data" above or use simulator presets to add some!</td>
                 </tr>
               ) : (
                 comments.map((item) => (

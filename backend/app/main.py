@@ -408,8 +408,8 @@ def login_creator(username: str, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(creator)
         
-        # Seed initial mock posts for new creator
-        seed_creator_posts(db, creator.id)
+        # Seed rich mock data (posts, comments, stats, etc.) for new creator
+        seed_mock_data(creator.id, db)
 
     return creator
 
