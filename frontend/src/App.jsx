@@ -67,9 +67,13 @@ function App() {
     if (code && !codeProcessed.current) {
       codeProcessed.current = true;
       setAuthLoading(true);
-      loginWithFacebookCode(code).then(() => {
+      loginWithFacebookCode(code).then((success) => {
         window.history.replaceState({}, document.title, window.location.pathname);
         setAuthLoading(false);
+        if (success) {
+          setViewMode('dashboard');
+          navigateTo('/dashboard');
+        }
       });
     }
   }, [loginWithFacebookCode]);

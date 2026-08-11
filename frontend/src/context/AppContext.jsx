@@ -276,10 +276,11 @@ export const AppProvider = ({ children }) => {
   const loginWithFacebookCode = async (code) => {
     setLoading(true);
     try {
+      const redirectUri = window.location.origin + '/';
       const res = await fetch(`${API_BASE_URL}/auth/facebook-callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ code, redirect_uri: redirectUri })
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
